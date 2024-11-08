@@ -73,26 +73,18 @@ const BeforeCall = () => {
 
 
     if (currentUser) {
-      // console.log("Initiating call with settings:", callSettings);
       console.log("call initiated")
-
       const docRef = await addDoc(collection(db, 'calls'),{})
-      // await addDoc(collection(db, 'calls'),callSettings);
       await setDoc(docRef, callSettings)
-      // console.log(docRef.id);
-      // navigate('/video-call', { state: { callId: docRef.id, isCaller: false } });
     }
-    // navigate(`/call/session/${friendId}`, { state: callSettings });
   };
 
   const listenForCallReject = (userId) => {
-    // let callID = ""
     const callQuery = query(
       collection(db, 'calls'),
       where('callerId', '==', userId),
       where('status', '==', 'rejected')
     );
-    // const docRef = doc(db, "calls", callID)
 
     onSnapshot(callQuery, (snapshot) => {
       if (!snapshot.empty) {
@@ -118,7 +110,6 @@ const BeforeCall = () => {
         if (callData?.status === "accepted") {
           console.log("A call accepted");
           navigate('/video-call', { state: { callId, isCaller: true } });
-          // navigate(`/before/call/${callId}`, { state: { callId, isCaller: true } });
         }
       }
     });

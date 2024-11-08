@@ -1,274 +1,266 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../config/firebase';
-import { doc, updateDoc, onSnapshot, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, deleteDoc, arrayUnion } from 'firebase/firestore';
 
 const VideoCall = () => {
-    const [peerConnection, setPeerConnection] = useState(null);
-    const [localStream, setLocalStream] = useState(null);
-    const [remoteStream, setRemoteStream] = useState(null);
-    const [connectionState, setConnectionState] = useState('');
-    const [error, setError] = useState(null);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoOff, setIsVideoOff] = useState(false);
-    
-    const localVideoRef = useRef(null);
-    const remoteVideoRef = useRef(null);
-    const navigate = useNavigate();
     const location = useLocation();
-
+    const navigate = useNavigate();
     const callId = location.state?.callId;
     const isCaller = location.state?.isCaller || false;
 
-    // Create a stable remote media stream
-    const remoteMediaStream = useMemo(() => new MediaStream(), []);
+    // Refs
+    const localVideoRef = useRef(null);
+    const remoteVideoRef = useRef(null);
+    const peerConnectionRef = useRef(null);
+    const localStreamRef = useRef(null);
 
+    // State
+    const [error, setError] = useState(null);
+    const [connectionState, setConnectionState] = useState('initializing');
+    const [remoteStream, setRemoteStream] = useState(null);
+
+    // WebRTC configuration
+    const configuration = useMemo(() => ({
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    }), []);
+    // Initialize media devices and create peer connection
+     // Initialize media devices and create peer connection
+     const initializeCall = useCallback(async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+                audio: true
+            });
+            localStreamRef.current = stream;
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
+
+            const peerConnection = new RTCPeerConnection(configuration);
+            peerConnectionRef.current = peerConnection;
+
+            // Add local tracks to peer connection
+            stream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, stream);
+            });
+
+            // Handle incoming remote stream
+            peerConnection.ontrack = (event) => {
+                console.log('Received remote track:', event.streams[0]);
+                if (remoteVideoRef.current && event.streams[0]) {
+                    remoteVideoRef.current.srcObject = event.streams[0];
+                    setRemoteStream(event.streams[0]);
+                }
+            };
+
+            // Handle ICE candidates - Fixed Firebase reference
+            peerConnection.onicecandidate = async (event) => {
+                if (event.candidate) {
+                    console.log('New ICE candidate:', event.candidate);
+                    const candidateData = event.candidate.toJSON();
+                    const docRef = doc(db, 'calls', callId);
+                    
+                    try {
+                        await updateDoc(docRef, {
+                            [`${isCaller ? 'callerCandidates' : 'calleeCandidates'}`]: arrayUnion(candidateData)
+                        });
+                    } catch (err) {
+                        console.error('Error adding ICE candidate:', err);
+                    }
+                }
+            };
+
+            // Handle connection state changes
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state changed:', peerConnection.connectionState);
+                setConnectionState(peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    updateCallStatus('ongoing');
+                }
+            };
+
+            // Handle ICE connection state changes
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE connection state:', peerConnection.iceConnectionState);
+            };
+
+            if (isCaller) {
+                await createOffer();
+            }
+        } catch (err) {
+            setError(`Failed to initialize call: ${err.message}`);
+            console.error('Initialize call error:', err);
+        }
+    }, [configuration, isCaller, callId]);
+
+    // Create and set offer (caller)
+    
+    // Create and set offer (caller) - Fixed SDP handling
+    const createOffer = async () => {
+        try {
+            const peerConnection = peerConnectionRef.current;
+            if (!peerConnection) {
+                throw new Error('PeerConnection not initialized');
+            }
+
+            const offer = await peerConnection.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+
+            // Set local description before sending the offer
+            await peerConnection.setLocalDescription(new RTCSessionDescription(offer));
+            
+            // Wait for ICE gathering to complete
+            await new Promise(resolve => {
+                if (peerConnection.iceGatheringState === 'complete') {
+                    resolve();
+                } else {
+                    peerConnection.addEventListener('icegatheringstatechange', () => {
+                        if (peerConnection.iceGatheringState === 'complete') {
+                            resolve();
+                        }
+                    });
+                }
+            });
+
+            // Send the offer with the final SDP
+            await updateDoc(doc(db, 'calls', callId), {
+                offer: {
+                    type: peerConnection.localDescription.type,
+                    sdp: peerConnection.localDescription.sdp
+                }
+            });
+        } catch (err) {
+            setError(`Failed to create offer: ${err.message}`);
+            console.error('Create offer error:', err);
+        }
+    };
+
+    // Create and set answer (callee)
+    const createAnswer = async (offer) => {
+        try {
+            console.log('Setting remote description:', offer);
+            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+            
+            const answer = await peerConnectionRef.current.createAnswer();
+            console.log('Created answer:', answer);
+            await peerConnectionRef.current.setLocalDescription(answer);
+            
+            await updateDoc(doc(db, 'calls', callId), {
+                answer: {
+                    type: answer.type,
+                    sdp: answer.sdp
+                },
+                status: 'ongoing'
+            });
+        } catch (err) {
+            setError(`Failed to create answer: ${err.message}`);
+            console.error('Create answer error:', err);
+        }
+    };
+
+    // Handle ICE candidates
+    const handleICECandidates = useCallback(async (data) => {
+        try {
+            const candidatesArray = isCaller ? data.calleeCandidates : data.callerCandidates;
+            if (candidatesArray && Array.isArray(candidatesArray)) {
+                for (const candidate of candidatesArray) {
+                    if (candidate && !peerConnectionRef.current.remoteDescription) {
+                        console.log('Waiting for remote description before adding candidates');
+                        return;
+                    }
+                    if (candidate) {
+                        console.log('Adding ICE candidate:', candidate);
+                        await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error handling ICE candidates:', err);
+        }
+    }, [isCaller]);
+
+    // Update call status in Firestore
+    const updateCallStatus = async (status) => {
+        try {
+            await updateDoc(doc(db, 'calls', callId), { status });
+        } catch (err) {
+            console.error('Failed to update call status:', err);
+        }
+    };
+
+    // Clean up resources
+    const cleanup = useCallback(() => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+        }
+        if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = null;
+        }
+        if (callId) {
+            deleteDoc(doc(db, 'calls', callId)).catch(console.error);
+        }
+    }, [callId]);
+
+    // Handle end call
+    const endCall = useCallback(async () => {
+        try {
+            await updateCallStatus('ended');
+            cleanup();
+            navigate('/');
+        } catch (err) {
+            setError(`Failed to end call: ${err.message}`);
+        }
+    }, [cleanup, navigate]);
+
+    // Initialize call and set up listeners
     useEffect(() => {
         if (!callId) {
-            setError('No call ID provided');
             navigate('/');
             return;
         }
 
         initializeCall();
-        return () => cleanUpCall();
-    }, [callId, isCaller, navigate]);
 
-    const createPeerConnection = useCallback(() => {
-        try {
-            const pc = new RTCPeerConnection({
-                iceServers: [
-                    {
-                        urls: [
-                            'stun:stun.l.google.com:19302',
-                            'stun:global.stun.twilio.com:3478',
-                        ],
-                    },
-                ],
-                iceCandidatePoolSize: 10,
-            });
-
-            // Connection state handling
-            pc.onconnectionstatechange = () => {
-                setConnectionState(pc.connectionState);
-                console.log('Connection state:', pc.connectionState);
-            };
-
-            pc.oniceconnectionstatechange = () => {
-                console.log('ICE connection state:', pc.iceConnectionState);
-            };
-
-            // Track handling
-            pc.ontrack = (event) => {
-                console.log('Received track:', event.track.kind);
-                remoteMediaStream.addTrack(event.track);
-                setRemoteStream(remoteMediaStream);
-                
-                if (remoteVideoRef.current) {
-                    remoteVideoRef.current.srcObject = remoteMediaStream;
-                }
-            };
-
-            return pc;
-        } catch (error) {
-            console.error('Error creating peer connection:', error);
-            setError('Failed to create peer connection');
-            return null;
-        }
-    }, [remoteMediaStream]);
-
-    const initializeCall = async () => {
-        console.log('Initializing call');
-        const pc = createPeerConnection();
-        if (!pc) return;
-        
-        setPeerConnection(pc);
-        await setCallStatus('ongoing');
-
-        try {
-            await setupLocalStream(pc);
-            setupICECandidateHandling(pc);
-            setupFirestoreListeners(pc);
-            if (isCaller) await createAndSendOffer(pc);
-        } catch (error) {
-            console.error('Error initializing call:', error);
-            setError('Failed to initialize call');
-        }
-
-        listenForCallEnded(callId);
-    };
-
-    const setCallStatus = useCallback(async (status) => {
-        if (!callId) return;
-        try {
-            await updateDoc(doc(db, 'calls', callId), { status });
-        } catch (error) {
-            console.error('Error updating call status:', error);
-        }
-    }, [callId]);
-
-    const setupLocalStream = useCallback(async (pc) => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: true,
-                audio: true,
-            });
-            
-            setLocalStream(stream);
-            if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream;
-            }
-
-            stream.getTracks().forEach(track => {
-                pc.addTrack(track, stream);
-                console.log('Added local track:', track.kind);
-            });
-        } catch (error) {
-            console.error('Error accessing media devices:', error);
-            setError('Failed to access camera or microphone');
-        }
-    }, []);
-
-    const setupICECandidateHandling = useCallback((pc) => {
-        const handledCandidates = new Set();
-        
-        pc.onicecandidate = async (event) => {
-            if (event.candidate) {
-                const candidateField = isCaller ? 'callerCandidates' : 'receiverCandidates';
-                const candidateJSON = event.candidate.toJSON();
-                
-                if (!handledCandidates.has(candidateJSON.candidate)) {
-                    handledCandidates.add(candidateJSON.candidate);
-                    try {
-                        await updateDoc(doc(db, 'calls', callId), {
-                            [candidateField]: arrayUnion(candidateJSON),
-                        });
-                    } catch (error) {
-                        console.error('Error sending ICE candidate:', error);
-                    }
-                }
-            }
-        };
-    }, [isCaller, callId]);
-
-    const setupFirestoreListeners = useCallback((pc) => {
-        const callDoc = doc(db, 'calls', callId);
-
-        onSnapshot(callDoc, async (snapshot) => {
+        // Set up Firestore listener
+        const unsubscribe = onSnapshot(doc(db, 'calls', callId), async (snapshot) => {
             const data = snapshot.data();
             if (!data) return;
 
-            try {
-                if (isCaller && data.answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                } else if (!isCaller && data.offer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    const answer = await pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-                    await updateDoc(callDoc, { answer: { type: answer.type, sdp: answer.sdp } });
-                }
+            console.log('Call document updated:', data);
 
-                const candidates = data[isCaller ? 'receiverCandidates' : 'callerCandidates'];
-                if (candidates?.length > 0) {
-                    for (const candidate of candidates) {
-                        try {
-                            if (pc.remoteDescription) {
-                                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                            }
-                        } catch (error) {
-                            console.error('Error adding ICE candidate:', error);
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Error in Firestore listener:', error);
-                setError('Connection error occurred');
-            }
-        });
-    }, [isCaller, callId]);
-
-    const createAndSendOffer = useCallback(async (pc) => {
-        try {
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await updateDoc(doc(db, 'calls', callId), {
-                offer: { sdp: offer.sdp, type: offer.type },
-            });
-        } catch (error) {
-            console.error('Error creating offer:', error);
-            setError('Failed to create call offer');
-        }
-    }, [callId]);
-
-    const listenForCallEnded = useCallback((callId) => {
-        onSnapshot(doc(db, "calls", callId), async (snapshot) => {
-            const callData = snapshot.data();
-            if (callData?.status === "ended") {
-                await cleanUpCall();
+            if (data.status === 'ended') {
+                cleanup();
                 navigate('/');
+                return;
             }
-        });
-    }, [navigate]);
 
-    const cleanUpCall = useCallback(async () => {
-        console.log('Cleaning up call');
-        if (peerConnection) {
-            peerConnection.close();
-            setPeerConnection(null);
-        }
-
-        [localStream, remoteStream].forEach(stream => {
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
+            if (!isCaller && data.offer && !peerConnectionRef.current.currentRemoteDescription) {
+                await createAnswer(data.offer);
             }
-        });
 
-        setLocalStream(null);
-        setRemoteStream(null);
-
-        [localVideoRef, remoteVideoRef].forEach(ref => {
-            if (ref.current) {
-                ref.current.srcObject = null;
+            if (isCaller && data.answer && !peerConnectionRef.current.currentRemoteDescription) {
+                console.log('Setting remote description for caller:', data.answer);
+                await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
             }
+
+            // Handle ICE candidates
+            await handleICECandidates(data);
         });
 
-        try {
-            await deleteDoc(doc(db, 'calls', callId));
-        } catch (error) {
-            console.error('Error cleaning up call:', error);
-        }
-    }, [peerConnection, localStream, remoteStream, callId]);
-
-    const toggleAudio = useCallback(() => {
-        if (localStream) {
-            const audioTrack = localStream.getAudioTracks()[0];
-            if (audioTrack) {
-                audioTrack.enabled = !audioTrack.enabled;
-                setIsMuted(!audioTrack.enabled);
-            }
-        }
-    }, [localStream]);
-
-    const toggleVideo = useCallback(() => {
-        if (localStream) {
-            const videoTrack = localStream.getVideoTracks()[0];
-            if (videoTrack) {
-                videoTrack.enabled = !videoTrack.enabled;
-                setIsVideoOff(!videoTrack.enabled);
-            }
-        }
-    }, [localStream]);
-
-    const endCall = useCallback(async () => {
-        try {
-            await updateDoc(doc(db, 'calls', callId), { status: 'ended' });
-            await cleanUpCall();
-            navigate('/');
-        } catch (error) {
-            console.error('Error ending call:', error);
-            setError('Failed to end call');
-        }
-    }, [callId, cleanUpCall, navigate]);
+        // Cleanup on unmount
+        return () => {
+            unsubscribe();
+        };
+    }, [callId, navigate, initializeCall, cleanup, isCaller, handleICECandidates]);
 
     return (
         <div className="relative h-screen bg-gray-900">
@@ -277,7 +269,6 @@ const VideoCall = () => {
                     {error}
                 </div>
             )}
-
             <div className="flex items-center justify-center h-full">
                 <video
                     ref={remoteVideoRef}
@@ -291,7 +282,6 @@ const VideoCall = () => {
                     </div>
                 )}
             </div>
-
             <div className="absolute bottom-4 right-4 w-1/4 aspect-video rounded-lg overflow-hidden shadow-lg">
                 <video
                     ref={localVideoRef}
@@ -301,20 +291,7 @@ const VideoCall = () => {
                     className="w-full h-full object-cover"
                 />
             </div>
-
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
-                <button
-                    onClick={toggleAudio}
-                    className={`p-3 rounded-full ${isMuted ? 'bg-red-500' : 'bg-gray-600'} text-white hover:opacity-80`}
-                >
-                    {isMuted ? 'Unmute' : 'Mute'}
-                </button>
-                <button
-                    onClick={toggleVideo}
-                    className={`p-3 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-gray-600'} text-white hover:opacity-80`}
-                >
-                    {isVideoOff ? 'Start Video' : 'Stop Video'}
-                </button>
                 <button
                     onClick={endCall}
                     className="p-3 rounded-full bg-red-500 text-white hover:bg-red-600"
@@ -322,10 +299,8 @@ const VideoCall = () => {
                     End Call
                 </button>
             </div>
-
-            {/* Connection status indicator */}
             <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white p-2 rounded">
-                <p>Status: {connectionState || 'Connecting...'}</p>
+                <p>Status: {connectionState}</p>
             </div>
         </div>
     );
