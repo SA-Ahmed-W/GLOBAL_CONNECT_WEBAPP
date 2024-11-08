@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../config/firebase';
-import { doc, updateDoc, onSnapshot, deleteDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, deleteDoc, arrayUnion } from 'firebase/firestore';
 
 const VideoCall = () => {
     const [peerConnection, setPeerConnection] = useState(null);
@@ -11,7 +11,7 @@ const VideoCall = () => {
     const [error, setError] = useState(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
-
+    
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const navigate = useNavigate();
@@ -31,7 +31,7 @@ const VideoCall = () => {
         }
 
         initializeCall();
-        // return () => cleanUpCall();
+        return () => cleanUpCall();
     }, [callId, isCaller, navigate]);
 
     const createPeerConnection = useCallback(() => {
@@ -56,23 +56,16 @@ const VideoCall = () => {
 
             pc.oniceconnectionstatechange = () => {
                 console.log('ICE connection state:', pc.iceConnectionState);
-                if (pc.iceConnectionState === 'failed') {
-                    setError('Connection failed. Retrying...');
-                    // Potentially reset or attempt reconnection here
-                }
             };
-
 
             // Track handling
             pc.ontrack = (event) => {
                 console.log('Received track:', event.track.kind);
-                if (!remoteMediaStream.getTracks().includes(event.track)) {
-                    remoteMediaStream.addTrack(event.track);
-                    setRemoteStream(remoteMediaStream);
-
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.srcObject = remoteMediaStream;
-                    }
+                remoteMediaStream.addTrack(event.track);
+                setRemoteStream(remoteMediaStream);
+                
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = remoteMediaStream;
                 }
             };
 
@@ -88,20 +81,11 @@ const VideoCall = () => {
         console.log('Initializing call');
         const pc = createPeerConnection();
         if (!pc) return;
-
+        
         setPeerConnection(pc);
+        await setCallStatus('ongoing');
 
         try {
-            // Check the current call status before proceeding
-            const callDoc = doc(db, 'calls', callId);
-            const callSnapshot = await getDoc(callDoc);
-            const callData = callSnapshot.data();
-            if (callData?.status === 'ended') {
-                setError('The call has already ended');
-                navigate('/');
-                return;
-            }
-            await setCallStatus('ongoing');
             await setupLocalStream(pc);
             setupICECandidateHandling(pc);
             setupFirestoreListeners(pc);
@@ -129,166 +113,79 @@ const VideoCall = () => {
                 video: true,
                 audio: true,
             });
-
+            
             setLocalStream(stream);
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
             }
 
             stream.getTracks().forEach(track => {
-                const sender = pc.addTrack(track, stream);
+                pc.addTrack(track, stream);
                 console.log('Added local track:', track.kind);
-
-                // Monitor track status
-                track.onended = () => {
-                    console.log(`Local ${track.kind} track ended`);
-                    setError(`Local ${track.kind} track ended unexpectedly`);
-                };
-
-                track.onmute = () => {
-                    console.log(`Local ${track.kind} track muted`);
-                };
-
-                track.onunmute = () => {
-                    console.log(`Local ${track.kind} track unmuted`);
-                };
             });
-
-            // Monitor remote tracks
-            pc.ontrack = (event) => {
-                console.log('Received remote track:', event.track.kind);
-                event.track.onended = () => {
-                    console.log(`Remote ${event.track.kind} track ended`);
-                };
-
-                if (!remoteMediaStream.getTracks().includes(event.track)) {
-                    remoteMediaStream.addTrack(event.track);
-                    setRemoteStream(remoteMediaStream);
-
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.srcObject = remoteMediaStream;
-                        console.log('Set remote video source');
-
-                        // Monitor remote video element
-                        remoteVideoRef.current.onloadedmetadata = () => {
-                            console.log('Remote video metadata loaded');
-                        };
-
-                        remoteVideoRef.current.onerror = (error) => {
-                            console.error('Remote video error:', error);
-                            setError('Error displaying remote video');
-                        };
-                    }
-                }
-            };
         } catch (error) {
             console.error('Error accessing media devices:', error);
-            setError(`Failed to access camera or microphone: ${error.message}`);
+            setError('Failed to access camera or microphone');
         }
-    }, [remoteMediaStream]);
+    }, []);
 
     const setupICECandidateHandling = useCallback((pc) => {
+        const handledCandidates = new Set();
+        
         pc.onicecandidate = async (event) => {
             if (event.candidate) {
                 const candidateField = isCaller ? 'callerCandidates' : 'receiverCandidates';
-                try {
-                    await updateDoc(doc(db, 'calls', callId), {
-                        [candidateField]: arrayUnion(event.candidate.toJSON()),
-                    });
-                } catch (error) {
-                    console.error('Error sending ICE candidate:', error);
+                const candidateJSON = event.candidate.toJSON();
+                
+                if (!handledCandidates.has(candidateJSON.candidate)) {
+                    handledCandidates.add(candidateJSON.candidate);
+                    try {
+                        await updateDoc(doc(db, 'calls', callId), {
+                            [candidateField]: arrayUnion(candidateJSON),
+                        });
+                    } catch (error) {
+                        console.error('Error sending ICE candidate:', error);
+                    }
                 }
             }
         };
     }, [isCaller, callId]);
 
-
     const setupFirestoreListeners = useCallback((pc) => {
         const callDoc = doc(db, 'calls', callId);
-        let candidatesQueue = [];
 
         onSnapshot(callDoc, async (snapshot) => {
             const data = snapshot.data();
-            if (!data) {
-                setError('Call document not found');
-                navigate('/');
-                return;
-            }
+            if (!data) return;
 
             try {
-                // Handle offer/answer first
-                if (isCaller && data.answer && !pc.remoteDescription) {
-                    console.log('Caller setting remote description (answer)');
+                if (isCaller && data.answer && !pc.currentRemoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                    // Process queued candidates after setting remote description
-                    await processQueuedCandidates();
-                } else if (!isCaller && data.offer && !pc.remoteDescription) {
-                    console.log('Receiver setting remote description (offer)');
+                } else if (!isCaller && data.offer && !pc.currentRemoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-                    console.log('Creating and setting answer');
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     await updateDoc(callDoc, { answer: { type: answer.type, sdp: answer.sdp } });
-                    // Process queued candidates after setting remote description
-                    await processQueuedCandidates();
                 }
 
-                // Queue new candidates
-                const candidates = data[isCaller ? 'receiverCandidates' : 'callerCandidates'] || [];
-                candidates.forEach(candidate => {
-                    if (!candidatesQueue.some(c => c.candidate === candidate.candidate)) {
-                        candidatesQueue.push(candidate);
+                const candidates = data[isCaller ? 'receiverCandidates' : 'callerCandidates'];
+                if (candidates?.length > 0) {
+                    for (const candidate of candidates) {
+                        try {
+                            if (pc.remoteDescription) {
+                                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                            }
+                        } catch (error) {
+                            console.error('Error adding ICE candidate:', error);
+                        }
                     }
-                });
-
-                // Try to process queued candidates
-                await processQueuedCandidates();
+                }
             } catch (error) {
                 console.error('Error in Firestore listener:', error);
-                setError(`Connection error: ${error.message}`);
-                // Attempt recovery
-                await handleConnectionError(pc);
+                setError('Connection error occurred');
             }
         });
-
-        async function processQueuedCandidates() {
-            if (pc.remoteDescription && candidatesQueue.length > 0) {
-                console.log(`Processing ${candidatesQueue.length} queued candidates`);
-                while (candidatesQueue.length) {
-                    const candidate = candidatesQueue.shift();
-                    try {
-                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                        console.log('Successfully added ICE candidate');
-                    } catch (error) {
-                        console.error('Error adding queued ICE candidate:', error);
-                        candidatesQueue.unshift(candidate); // Put it back in queue
-                        break;
-                    }
-                }
-            }
-        }
-    }, [isCaller, callId, navigate]);
-
-    const handleConnectionError = async (pc) => {
-        if (pc.iceConnectionState === 'failed') {
-            console.log('Attempting to restart ICE');
-            try {
-                // Create and send a new offer to restart ICE
-                if (isCaller) {
-                    const offer = await pc.createOffer({ iceRestart: true });
-                    await pc.setLocalDescription(offer);
-                    await updateDoc(doc(db, 'calls', callId), {
-                        offer: { sdp: offer.sdp, type: offer.type },
-                        iceRestart: true
-                    });
-                }
-            } catch (error) {
-                console.error('Error during ICE restart:', error);
-                setError('Connection failed. Please try rejoining the call.');
-            }
-        }
-    };
-
+    }, [isCaller, callId]);
 
     const createAndSendOffer = useCallback(async (pc) => {
         try {
@@ -365,13 +262,13 @@ const VideoCall = () => {
     const endCall = useCallback(async () => {
         try {
             await updateDoc(doc(db, 'calls', callId), { status: 'ended' });
+            await cleanUpCall();
             navigate('/');
         } catch (error) {
             console.error('Error ending call:', error);
             setError('Failed to end call');
         }
-    }, [callId, navigate]);
-
+    }, [callId, cleanUpCall, navigate]);
 
     return (
         <div className="relative h-screen bg-gray-900">
@@ -435,5 +332,3 @@ const VideoCall = () => {
 };
 
 export default VideoCall;
-
-
