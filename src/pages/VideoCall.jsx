@@ -136,14 +136,56 @@ const VideoCall = () => {
             }
 
             stream.getTracks().forEach(track => {
-                pc.addTrack(track, stream);
+                const sender = pc.addTrack(track, stream);
                 console.log('Added local track:', track.kind);
+
+                // Monitor track status
+                track.onended = () => {
+                    console.log(`Local ${track.kind} track ended`);
+                    setError(`Local ${track.kind} track ended unexpectedly`);
+                };
+
+                track.onmute = () => {
+                    console.log(`Local ${track.kind} track muted`);
+                };
+
+                track.onunmute = () => {
+                    console.log(`Local ${track.kind} track unmuted`);
+                };
             });
+
+            // Monitor remote tracks
+            pc.ontrack = (event) => {
+                console.log('Received remote track:', event.track.kind);
+                event.track.onended = () => {
+                    console.log(`Remote ${event.track.kind} track ended`);
+                };
+
+                if (!remoteMediaStream.getTracks().includes(event.track)) {
+                    remoteMediaStream.addTrack(event.track);
+                    setRemoteStream(remoteMediaStream);
+
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.srcObject = remoteMediaStream;
+                        console.log('Set remote video source');
+
+                        // Monitor remote video element
+                        remoteVideoRef.current.onloadedmetadata = () => {
+                            console.log('Remote video metadata loaded');
+                        };
+
+                        remoteVideoRef.current.onerror = (error) => {
+                            console.error('Remote video error:', error);
+                            setError('Error displaying remote video');
+                        };
+                    }
+                }
+            };
         } catch (error) {
             console.error('Error accessing media devices:', error);
-            setError('Failed to access camera or microphone');
+            setError(`Failed to access camera or microphone: ${error.message}`);
         }
-    }, []);
+    }, [remoteMediaStream]);
 
     const setupICECandidateHandling = useCallback((pc) => {
         pc.onicecandidate = async (event) => {
@@ -163,6 +205,8 @@ const VideoCall = () => {
 
     const setupFirestoreListeners = useCallback((pc) => {
         const callDoc = doc(db, 'calls', callId);
+        let candidatesQueue = [];
+
         onSnapshot(callDoc, async (snapshot) => {
             const data = snapshot.data();
             if (!data) {
@@ -172,33 +216,78 @@ const VideoCall = () => {
             }
 
             try {
+                // Handle offer/answer first
                 if (isCaller && data.answer && !pc.remoteDescription) {
+                    console.log('Caller setting remote description (answer)');
                     await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+                    // Process queued candidates after setting remote description
+                    await processQueuedCandidates();
                 } else if (!isCaller && data.offer && !pc.remoteDescription) {
+                    console.log('Receiver setting remote description (offer)');
                     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+                    console.log('Creating and setting answer');
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
                     await updateDoc(callDoc, { answer: { type: answer.type, sdp: answer.sdp } });
+                    // Process queued candidates after setting remote description
+                    await processQueuedCandidates();
                 }
 
-                const candidates = data[isCaller ? 'receiverCandidates' : 'callerCandidates'];
-                if (candidates?.length > 0) {
-                    for (const candidate of candidates) {
-                        try {
-                            if (pc.remoteDescription) {
-                                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                            }
-                        } catch (error) {
-                            console.error('Error adding ICE candidate:', error);
-                        }
+                // Queue new candidates
+                const candidates = data[isCaller ? 'receiverCandidates' : 'callerCandidates'] || [];
+                candidates.forEach(candidate => {
+                    if (!candidatesQueue.some(c => c.candidate === candidate.candidate)) {
+                        candidatesQueue.push(candidate);
                     }
-                }
+                });
+
+                // Try to process queued candidates
+                await processQueuedCandidates();
             } catch (error) {
                 console.error('Error in Firestore listener:', error);
-                setError('Connection error occurred');
+                setError(`Connection error: ${error.message}`);
+                // Attempt recovery
+                await handleConnectionError(pc);
             }
         });
+
+        async function processQueuedCandidates() {
+            if (pc.remoteDescription && candidatesQueue.length > 0) {
+                console.log(`Processing ${candidatesQueue.length} queued candidates`);
+                while (candidatesQueue.length) {
+                    const candidate = candidatesQueue.shift();
+                    try {
+                        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                        console.log('Successfully added ICE candidate');
+                    } catch (error) {
+                        console.error('Error adding queued ICE candidate:', error);
+                        candidatesQueue.unshift(candidate); // Put it back in queue
+                        break;
+                    }
+                }
+            }
+        }
     }, [isCaller, callId, navigate]);
+
+    const handleConnectionError = async (pc) => {
+        if (pc.iceConnectionState === 'failed') {
+            console.log('Attempting to restart ICE');
+            try {
+                // Create and send a new offer to restart ICE
+                if (isCaller) {
+                    const offer = await pc.createOffer({ iceRestart: true });
+                    await pc.setLocalDescription(offer);
+                    await updateDoc(doc(db, 'calls', callId), {
+                        offer: { sdp: offer.sdp, type: offer.type },
+                        iceRestart: true
+                    });
+                }
+            } catch (error) {
+                console.error('Error during ICE restart:', error);
+                setError('Connection failed. Please try rejoining the call.');
+            }
+        }
+    };
 
 
     const createAndSendOffer = useCallback(async (pc) => {
