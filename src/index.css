@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+/* Add in index.css or a specific CSS file */
+@media (max-width: 768px) {
+    .md\:inline {
+      display: none;
+    }
+  }
+  
