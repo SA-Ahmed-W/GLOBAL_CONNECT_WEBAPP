@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { db } from '../config/firebase';
-import { doc, updateDoc, onSnapshot, deleteDoc, arrayUnion } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, deleteDoc, arrayUnion, getDoc } from 'firebase/firestore';
 
 const VideoCall = () => {
     const [peerConnection, setPeerConnection] = useState(null);
@@ -11,7 +11,7 @@ const VideoCall = () => {
     const [error, setError] = useState(null);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
-    
+
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const navigate = useNavigate();
@@ -31,7 +31,7 @@ const VideoCall = () => {
         }
 
         initializeCall();
-        return () => cleanUpCall();
+        // return () => cleanUpCall();
     }, [callId, isCaller, navigate]);
 
     const createPeerConnection = useCallback(() => {
@@ -56,16 +56,23 @@ const VideoCall = () => {
 
             pc.oniceconnectionstatechange = () => {
                 console.log('ICE connection state:', pc.iceConnectionState);
+                if (pc.iceConnectionState === 'failed') {
+                    setError('Connection failed. Retrying...');
+                    // Potentially reset or attempt reconnection here
+                }
             };
+
 
             // Track handling
             pc.ontrack = (event) => {
                 console.log('Received track:', event.track.kind);
-                remoteMediaStream.addTrack(event.track);
-                setRemoteStream(remoteMediaStream);
-                
-                if (remoteVideoRef.current) {
-                    remoteVideoRef.current.srcObject = remoteMediaStream;
+                if (!remoteMediaStream.getTracks().includes(event.track)) {
+                    remoteMediaStream.addTrack(event.track);
+                    setRemoteStream(remoteMediaStream);
+
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.srcObject = remoteMediaStream;
+                    }
                 }
             };
 
@@ -81,11 +88,20 @@ const VideoCall = () => {
         console.log('Initializing call');
         const pc = createPeerConnection();
         if (!pc) return;
-        
+
         setPeerConnection(pc);
-        await setCallStatus('ongoing');
 
         try {
+            // Check the current call status before proceeding
+            const callDoc = doc(db, 'calls', callId);
+            const callSnapshot = await getDoc(callDoc);
+            const callData = callSnapshot.data();
+            if (callData?.status === 'ended') {
+                setError('The call has already ended');
+                navigate('/');
+                return;
+            }
+            await setCallStatus('ongoing');
             await setupLocalStream(pc);
             setupICECandidateHandling(pc);
             setupFirestoreListeners(pc);
@@ -113,7 +129,7 @@ const VideoCall = () => {
                 video: true,
                 audio: true,
             });
-            
+
             setLocalStream(stream);
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
@@ -130,38 +146,35 @@ const VideoCall = () => {
     }, []);
 
     const setupICECandidateHandling = useCallback((pc) => {
-        const handledCandidates = new Set();
-        
         pc.onicecandidate = async (event) => {
             if (event.candidate) {
                 const candidateField = isCaller ? 'callerCandidates' : 'receiverCandidates';
-                const candidateJSON = event.candidate.toJSON();
-                
-                if (!handledCandidates.has(candidateJSON.candidate)) {
-                    handledCandidates.add(candidateJSON.candidate);
-                    try {
-                        await updateDoc(doc(db, 'calls', callId), {
-                            [candidateField]: arrayUnion(candidateJSON),
-                        });
-                    } catch (error) {
-                        console.error('Error sending ICE candidate:', error);
-                    }
+                try {
+                    await updateDoc(doc(db, 'calls', callId), {
+                        [candidateField]: arrayUnion(event.candidate.toJSON()),
+                    });
+                } catch (error) {
+                    console.error('Error sending ICE candidate:', error);
                 }
             }
         };
     }, [isCaller, callId]);
 
+
     const setupFirestoreListeners = useCallback((pc) => {
         const callDoc = doc(db, 'calls', callId);
-
         onSnapshot(callDoc, async (snapshot) => {
             const data = snapshot.data();
-            if (!data) return;
+            if (!data) {
+                setError('Call document not found');
+                navigate('/');
+                return;
+            }
 
             try {
-                if (isCaller && data.answer && !pc.currentRemoteDescription) {
+                if (isCaller && data.answer && !pc.remoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-                } else if (!isCaller && data.offer && !pc.currentRemoteDescription) {
+                } else if (!isCaller && data.offer && !pc.remoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
@@ -185,7 +198,8 @@ const VideoCall = () => {
                 setError('Connection error occurred');
             }
         });
-    }, [isCaller, callId]);
+    }, [isCaller, callId, navigate]);
+
 
     const createAndSendOffer = useCallback(async (pc) => {
         try {
@@ -262,13 +276,13 @@ const VideoCall = () => {
     const endCall = useCallback(async () => {
         try {
             await updateDoc(doc(db, 'calls', callId), { status: 'ended' });
-            await cleanUpCall();
             navigate('/');
         } catch (error) {
             console.error('Error ending call:', error);
             setError('Failed to end call');
         }
-    }, [callId, cleanUpCall, navigate]);
+    }, [callId, navigate]);
+
 
     return (
         <div className="relative h-screen bg-gray-900">
@@ -332,3 +346,5 @@ const VideoCall = () => {
 };
 
 export default VideoCall;
+
+
