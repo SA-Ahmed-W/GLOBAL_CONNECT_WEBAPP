@@ -66,8 +66,8 @@ const BeforeCall = () => {
       callerId: currentUser.uid,
       receiverId: fid,
       translationEnabled,
-      inputLanguage: translationEnabled ? inputLanguage : null,
-      outputLanguage: translationEnabled ? outputLanguage : null,
+      caller_inputLanguage: translationEnabled ? inputLanguage : null,
+      caller_outputLanguage: translationEnabled ? outputLanguage : null,
       status: 'pending'
     };
 
