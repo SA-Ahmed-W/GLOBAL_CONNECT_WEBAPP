@@ -94,7 +94,7 @@ const VideoCall = () => {
 
     const createOffer = useCallback(async () => {
         try {
-            if (!peerConnectionRef.current) return;
+            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "stable") return;
 
             const offer = await peerConnectionRef.current.createOffer();
             await peerConnectionRef.current.setLocalDescription(offer);
@@ -112,7 +112,7 @@ const VideoCall = () => {
 
     const handleOffer = useCallback(async (offer) => {
         try {
-            if (!peerConnectionRef.current) return;
+            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "stable") return;
 
             await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnectionRef.current.createAnswer();
@@ -131,7 +131,7 @@ const VideoCall = () => {
 
     const handleAnswer = useCallback(async (answer) => {
         try {
-            if (!peerConnectionRef.current) return;
+            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "have-local-offer") return;
 
             await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
             setIsConnected(true);
@@ -217,11 +217,11 @@ const VideoCall = () => {
             if (!data) return;
 
             try {
-                if (!isCaller && data.offer && !peerConnectionRef.current?.remoteDescription) {
+                if (!isCaller && data.offer && peerConnectionRef.current.signalingState === "stable") {
                     await handleOffer(data.offer);
                 }
 
-                if (isCaller && data.answer && !peerConnectionRef.current?.remoteDescription) {
+                if (isCaller && data.answer && peerConnectionRef.current.signalingState === "have-local-offer") {
                     await handleAnswer(data.answer);
                 }
 
