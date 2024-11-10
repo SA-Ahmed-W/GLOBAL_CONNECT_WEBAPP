@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { db } from '../config/firebase';
-import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const VideoCall = () => {
@@ -184,6 +184,8 @@ const VideoCall = () => {
             status: 'ended',
             endedAt: new Date().toISOString()
         });
+
+        await deleteDoc(callDocRef);
 
         navigate('/');
     }, [callDocRef, navigate]);
