@@ -48,8 +48,11 @@ const VideoCall = () => {
 
             pc.ontrack = (event) => {
                 console.log("Received remote track", event.track.kind);
-                if (remoteVideoRef.current && event.streams[0]) {
-                    remoteVideoRef.current.srcObject = event.streams[0];
+                if (remoteVideoRef.current) {
+                    const [remoteStream] = event.streams;
+                    if (remoteStream) {
+                        remoteVideoRef.current.srcObject = remoteStream;
+                    }
                 }
             };
 
@@ -96,24 +99,10 @@ const VideoCall = () => {
             localStreamRef.current = stream;
 
             if (peerConnectionRef.current) {
-                const audioTrack = stream.getAudioTracks()[0];
-                const videoTrack = stream.getVideoTracks()[0];
-
-                if (audioTrack) {
-                    const audioSender = peerConnectionRef.current.getSenders()
-                        .find(s => s.track?.kind === 'audio');
-                    if (audioSender) {
-                        await audioSender.replaceTrack(audioTrack);
-                    }
-                }
-
-                if (videoTrack) {
-                    const videoSender = peerConnectionRef.current.getSenders()
-                        .find(s => s.track?.kind === 'video');
-                    if (videoSender) {
-                        await videoSender.replaceTrack(videoTrack);
-                    }
-                }
+                // Add each track from the local stream to the peer connection
+                localStreamRef.current.getTracks().forEach(track => {
+                    peerConnectionRef.current.addTrack(track, localStreamRef.current);
+                });
             }
         } catch (error) {
             console.error("Error accessing media devices:", error);
@@ -222,7 +211,6 @@ const VideoCall = () => {
             navigate('/');
         } catch (error) {
             console.error("Error ending call:", error);
-            // Still try to navigate away even if there's an error
             navigate('/');
         }
     }, [callDocRef, navigate]);
@@ -315,32 +303,24 @@ const VideoCall = () => {
                         className="w-full rounded-lg shadow-lg"
                     />
                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                        Remote User
+                        Remote
                     </p>
                 </div>
             </div>
-
-            <div className="flex gap-4 mt-4">
+            <div className="flex space-x-4">
                 <button
                     onClick={toggleAudio}
-                    className={`px-4 py-2 rounded-full ${
-                        isMuted ? 'bg-red-500' : 'bg-blue-500'
-                    } text-white`}
+                    className={`btn ${isMuted ? 'bg-red-500' : 'bg-blue-500'} text-white`}
                 >
                     {isMuted ? 'Unmute' : 'Mute'}
                 </button>
                 <button
                     onClick={toggleVideo}
-                    className={`px-4 py-2 rounded-full ${
-                        isVideoOff ? 'bg-red-500' : 'bg-blue-500'
-                    } text-white`}
+                    className={`btn ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'} text-white`}
                 >
                     {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
                 </button>
-                <button
-                    onClick={endCall}
-                    className="px-4 py-2 rounded-full bg-red-500 text-white"
-                >
+                <button onClick={endCall} className="btn bg-red-500 text-white">
                     End Call
                 </button>
             </div>
