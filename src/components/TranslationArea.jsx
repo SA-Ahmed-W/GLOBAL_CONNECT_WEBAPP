@@ -7,7 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }) {
+function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream }) {
   // Firestore document reference memoized
   const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
 
@@ -16,7 +16,6 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
   const [inputLangCode, setInputLangCode] = useState(null);
   const [outputLangCode, setOutputLangCode] = useState(null);
   const [translations, setTranslations] = useState([]);
-  const [transcriptions, setTranscriptions] = useState([]);
 
   // Language-to-code mapping
   const languageCodeMap = useMemo(
@@ -63,7 +62,6 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
     getTranslationLanguage();
   }, [callDocRef, isCaller, getLanguageCode]);
 
-
   // Speech Recognition Setup
   useEffect(() => {
     if (!remoteStream) return;
@@ -86,11 +84,8 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
       recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript;
 
-        // Add new transcription
-        setTranscriptions((prev) => [
-          { text: transcript, isLatest: true },
-          ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
-        ]);
+        // Translate the latest transcript
+        translate(transcript);
       };
 
       recognition.onerror = (event) => console.error("Speech recognition error:", event.error);
@@ -122,7 +117,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
       };
       try {
         const response = await axios.request(options);
-        const translatedText = response.data.translation;
+        const translatedText = response.data.output;
 
         // Add new translation to the list
         setTranslations((prev) => [
@@ -136,43 +131,37 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
     [inputLangCode, outputLangCode]
   );
 
- 
-
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
-  <h1 className="text-xl font-bold mb-4">Translation Area</h1>
+      <h1 className="text-xl font-bold mb-4">Translation Area</h1>
 
-  {/* Desktop: Grid layout for Input/Output Language and Textarea */}
-  <div className="grid grid-cols-2 gap-4 md:grid-cols-2 sm:grid-cols-1">
-    {/* Left Section: Input and Output Language */}
-    <div>
-      <h2 className="text-lg">
-        Input Language: <span className="font-semibold">{inputLang || "Loading..."}</span>
-      </h2>
-      <h2 className="text-lg mt-2">
-        Output Language: <span className="font-semibold">{outputLang || "Loading..."}</span>
-      </h2>
-    </div>
+      {/* Grid layout for Input/Output Language and Translations */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-2 sm:grid-cols-1">
+        {/* Input and Output Language Display */}
+        <div>
+          <h2 className="text-lg">
+            Input Language: <span className="font-semibold">{inputLang || "Loading..."}</span>
+          </h2>
+          <h2 className="text-lg mt-2">
+            Output Language: <span className="font-semibold">{outputLang || "Loading..."}</span>
+          </h2>
+        </div>
 
-
-     {/* Transcriptions */}
-     <div className="mt-4 p-2 border border-gray-400 rounded-lg bg-gray-50">
-        {transcriptions.map((t, index) => (
-          <p
-            key={index}
-            className={`mt-1 ${
-              t.isLatest ? "text-black font-bold" : "text-gray-500"
-            }`}
-          >
-            {t.text}
-          </p>
-        ))}
+        {/* Translations */}
+        <div className="mt-4 p-2 border border-gray-400 rounded-lg bg-gray-50">
+          {translations.map((t, index) => (
+            <p
+              key={index}
+              className={`mt-1 ${
+                t.isLatest ? "text-black font-bold" : "text-gray-500"
+              }`}
+            >
+              {t.text}
+            </p>
+          ))}
+        </div>
       </div>
-  </div>
-
-  
-</div>
-
+    </div>
   );
 }
 
