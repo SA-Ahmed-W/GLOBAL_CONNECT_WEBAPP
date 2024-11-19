@@ -203,7 +203,7 @@ const VideoCall = () => {
             endedAt: new Date().toISOString()
         });
 
-        await deleteDoc(callDocRef);
+        // await deleteDoc(callDocRef);
 
         navigate('/');
     }, [callDocRef, navigate]);
