@@ -2,12 +2,15 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { db } from '../config/firebase';
 import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
+import TranslationArea from '../components/TranslationArea';
 
 const VideoCall = () => {
     const location = useLocation();
     const navigate = useNavigate();
     const callDocId = location.state?.callId || "";
     const isCaller = location.state?.isCaller || false;
+
+    const [isTranslation,setIsTranslation] = useState(false)
 
     // Refs
     const localVideoRef = useRef(null);
@@ -255,6 +258,30 @@ const VideoCall = () => {
         navigate
     ]);
 
+    useEffect(() => {
+        const getIsTranslation = async () => {
+            try {
+                // Fetch the document from Firestore
+                const docSnapshot = await getDoc(callDocRef);
+                
+                // Check if the document exists and get the 'translationEnabled' field
+                if (docSnapshot.exists()) {
+                    const data = docSnapshot.data();
+                    const translationEnabled = data.translationEnabled;
+
+                    // Set the state with the fetched value
+                    setIsTranslation(translationEnabled);
+                } else {
+                    console.log("Document does not exist");
+                }
+            } catch (error) {
+                console.error("Error fetching document: ", error);
+            }
+        };
+
+        getIsTranslation();
+    }, []);
+
     return (
         <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
         <div className="grid grid-cols-2 gap-4 mb-4 w-full max-w-4xl">
@@ -307,6 +334,13 @@ const VideoCall = () => {
                 End Call
             </button>
         </div>
+
+        {/* add the component here  */}
+        {
+            isTranslation ? <TranslationArea callDocId={callDocId} isCaller={isCaller} /> : <p>NO TRANSLATION</p>
+        }
+
+        
     </div>
     );
 };
