@@ -352,7 +352,7 @@ const VideoCall = () => {
 
             {/* Pass remoteStream as a prop */}
             {isTranslation ? (
-                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteAudioStream={audioStream} />
+                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
             ) : (
                 <p>NO TRANSLATION</p>
             )}

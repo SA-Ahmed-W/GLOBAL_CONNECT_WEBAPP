@@ -7,7 +7,7 @@ import { doc, getDoc } from "firebase/firestore";
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
-function TranslationArea({ callDocId, isCaller, remoteAudioStream }) {
+function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }) {
   // Firestore document reference memoized
   const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
 
