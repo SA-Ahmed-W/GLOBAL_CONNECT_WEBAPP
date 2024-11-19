@@ -15,7 +15,8 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
   const [outputLang, setOutputLang] = useState(null);
   const [inputLangCode, setInputLangCode] = useState(null);
   const [outputLangCode, setOutputLangCode] = useState(null);
-  const [translations, setTranslations] = useState([]); // Array of translations for display
+  const [translations, setTranslations] = useState([]);
+  const [transcriptions, setTranscriptions] = useState([]);
 
   // Language-to-code mapping
   const languageCodeMap = useMemo(
@@ -62,6 +63,46 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
     getTranslationLanguage();
   }, [callDocRef, isCaller, getLanguageCode]);
 
+
+  // Speech Recognition Setup
+  useEffect(() => {
+    if (!remoteStream) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = inputLangCode || "en"; // Default to English if not set
+    recognition.continuous = true;
+
+    // Extract audio tracks from the remote stream
+    const audioTracks = remoteStream.getAudioTracks();
+    if (audioTracks.length > 0) {
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(new MediaStream(audioTracks));
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Connect audio stream to SpeechRecognition
+      source.connect(destination);
+
+      // Start SpeechRecognition
+      recognition.onresult = (event) => {
+        const transcript = event.results[event.results.length - 1][0].transcript;
+
+        // Add new transcription
+        setTranscriptions((prev) => [
+          { text: transcript, isLatest: true },
+          ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
+        ]);
+      };
+
+      recognition.onerror = (event) => console.error("Speech recognition error:", event.error);
+      recognition.start();
+
+      return () => {
+        recognition.stop();
+        audioContext.close();
+      };
+    }
+  }, [remoteStream, inputLangCode]);
+
   // Translation function
   const translate = useCallback(
     async (text) => {
@@ -79,7 +120,6 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
           outputLanguage: outputLangCode,
         },
       };
-
       try {
         const response = await axios.request(options);
         const translatedText = response.data.translation;
@@ -96,40 +136,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
     [inputLangCode, outputLangCode]
   );
 
-  // Process audio to text
-  const processAudioStream = useCallback(() => {
-    if (!remoteAudioStream) return;
-
-    const audioTracks = remoteAudioStream.getAudioTracks();
-    if (audioTracks.length === 0) {
-      console.error("No audio tracks available in remote stream");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = inputLangCode; // Set the language for transcription
-    recognition.interimResults = false;
-    recognition.continuous = true;
-
-    recognition.onresult = (event) => {
-      const transcript = event.results[event.results.length - 1][0].transcript;
-      console.log("Transcribed text:", transcript);
-
-      // Call translate function with transcribed text
-      translate(transcript);
-    };
-
-    recognition.onerror = (event) => {
-      console.error("Speech recognition error:", event.error);
-    };
-
-    recognition.start();
-  }, [remoteAudioStream, inputLangCode, translate]);
-
-  // Start processing audio stream when remoteAudioStream is available
-  useEffect(() => {
-    processAudioStream();
-  }, [remoteAudioStream, processAudioStream]);
+ 
 
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
@@ -140,15 +147,15 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
     {/* Left Section: Input and Output Language */}
     <div>
       <h2 className="text-lg">
-        Input Language: <span className="font-semibold">{inputLang}</span>
+        Input Language: <span className="font-semibold">{inputLang || "Loading..."}</span>
       </h2>
       <h2 className="text-lg mt-2">
-        Output Language: <span className="font-semibold">{outputLang}</span>
+        Output Language: <span className="font-semibold">{outputLang || "Loading..."}</span>
       </h2>
     </div>
 
     {/* Right Section: Translation Textarea */}
-    <div>
+    {/* <div>
       <textarea
         readOnly
         className="w-full p-4 border border-gray-400 rounded-lg text-gray-800 bg-gray-50"
@@ -156,21 +163,34 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
         value={translations.map((t) => t.text).join("\n")}
         style={{ resize: "none" }}
       ></textarea>
-    </div>
+    </div> */}
+     {/* Transcriptions */}
+     <div className="mt-4 p-2 border border-gray-400 rounded-lg bg-gray-50">
+        {transcriptions.map((t, index) => (
+          <p
+            key={index}
+            className={`mt-1 ${
+              t.isLatest ? "text-black font-bold" : "text-gray-500"
+            }`}
+          >
+            {t.text}
+          </p>
+        ))}
+      </div>
   </div>
 
   {/* Mobile View: Stack Input/Output Language Below Textarea */}
-  <div className="block md:hidden mt-4">
+  {/* <div className="block md:hidden mt-4">
     <h2 className="text-lg">
       Input Language: <span className="font-semibold">{inputLang}</span>
     </h2>
     <h2 className="text-lg mt-2">
       Output Language: <span className="font-semibold">{outputLang}</span>
     </h2>
-  </div>
+  </div> */}
 
   {/* Translations List */}
-  <div className="mt-2">
+  {/* <div className="mt-2">
     {translations.map((t, index) => (
       <p
         key={index}
@@ -181,7 +201,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
         {t.text}
       </p>
     ))}
-  </div>
+  </div> */}
 </div>
 
   );
