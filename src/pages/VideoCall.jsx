@@ -3,6 +3,7 @@ import { db } from '../config/firebase';
 import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
+import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
 
 const VideoCall = () => {
     const location = useLocation();
@@ -11,7 +12,7 @@ const VideoCall = () => {
     const isCaller = location.state?.isCaller || false;
 
     const [isTranslation, setIsTranslation] = useState(false);
-    const [remoteStream, setRemoteStream] = useState(null); 
+    const [remoteStream, setRemoteStream] = useState(null);
     const [audioStream, setAudioStream] = useState(null);
 
     // Refs
@@ -51,10 +52,10 @@ const VideoCall = () => {
             if (remoteVideoRef.current && event.streams[0]) {
                 const stream = event.streams[0];
                 remoteVideoRef.current.srcObject = stream
-        
+
                 // Set the full remote stream
                 setRemoteStream(stream);
-        
+
                 // Extract only the audio track and create an audio-only stream
                 const audioTracks = stream.getAudioTracks();
                 if (audioTracks.length > 0) {
@@ -324,21 +325,20 @@ const VideoCall = () => {
                     </p>
                 </div>
             </div>
+            <RemoteStreamAudioEquilizer audioStream={audioStream} />
 
             <div className="flex gap-4 mt-4">
                 <button
                     onClick={toggleAudio}
-                    className={`px-4 py-2 rounded-full ${
-                        isMuted ? 'bg-red-500' : 'bg-blue-500'
-                    } text-white`}
+                    className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'
+                        } text-white`}
                 >
                     {isMuted ? 'Unmute' : 'Mute'}
                 </button>
                 <button
                     onClick={toggleVideo}
-                    className={`px-4 py-2 rounded-full ${
-                        isVideoOff ? 'bg-red-500' : 'bg-blue-500'
-                    } text-white`}
+                    className={`px-4 py-2 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'
+                        } text-white`}
                 >
                     {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
                 </button>
