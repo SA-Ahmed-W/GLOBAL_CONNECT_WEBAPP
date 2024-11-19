@@ -10,7 +10,9 @@ const VideoCall = () => {
     const callDocId = location.state?.callId || "";
     const isCaller = location.state?.isCaller || false;
 
-    const [isTranslation,setIsTranslation] = useState(false)
+    const [isTranslation, setIsTranslation] = useState(false);
+    const [remoteStream, setRemoteStream] = useState(null); 
+    const [audioStream, setAudioStream] = useState(null);
 
     // Refs
     const localVideoRef = useRef(null);
@@ -45,9 +47,22 @@ const VideoCall = () => {
         const pc = new RTCPeerConnection(servers);
         setupTransceivers(pc);
 
+       
+
         pc.ontrack = (event) => {
             if (remoteVideoRef.current && event.streams[0]) {
-                remoteVideoRef.current.srcObject = event.streams[0];
+                const stream = event.streams[0];
+                remoteVideoRef.current.srcObject = stream
+        
+                // Set the full remote stream
+                setRemoteStream(stream);
+        
+                // Extract only the audio track and create an audio-only stream
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    const audioOnlyStream = new MediaStream(audioTracks);
+                    setAudioStream(audioOnlyStream);
+                }
             }
         };
 
@@ -182,7 +197,7 @@ const VideoCall = () => {
         if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
         }
-        
+
         await updateDoc(callDocRef, {
             status: 'ended',
             endedAt: new Date().toISOString()
@@ -237,6 +252,7 @@ const VideoCall = () => {
 
                 if (data.status === 'ended') {
                     cleanup();
+                    // await deleteDoc(callDocRef);
                     navigate('/');
                 }
             } catch (error) {
@@ -263,7 +279,7 @@ const VideoCall = () => {
             try {
                 // Fetch the document from Firestore
                 const docSnapshot = await getDoc(callDocRef);
-                
+
                 // Check if the document exists and get the 'translationEnabled' field
                 if (docSnapshot.exists()) {
                     const data = docSnapshot.data();
@@ -283,65 +299,65 @@ const VideoCall = () => {
     }, []);
 
     return (
-        <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-        <div className="grid grid-cols-2 gap-4 mb-4 w-full max-w-4xl">
-            <div className="relative">
-                <video
-                    ref={localVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full rounded-lg shadow-lg"
-                />
-                <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                    You
-                </p>
+        <div className="flex flex-col min-h-screen bg-gray-100 p-4">
+            <div className="grid grid-cols-2 gap-4 mb-4 w-full max-w-4xl">
+                <div className="relative">
+                    <video
+                        ref={localVideoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full rounded-lg shadow-lg"
+                    />
+                    <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                        You
+                    </p>
+                </div>
+                <div className="relative">
+                    <video
+                        ref={remoteVideoRef}
+                        autoPlay
+                        playsInline
+                        className="w-full rounded-lg shadow-lg"
+                    />
+                    <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                        Remote User
+                    </p>
+                </div>
             </div>
-            <div className="relative">
-                <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full rounded-lg shadow-lg"
-                />
-                <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                    Remote User
-                </p>
+
+            <div className="flex gap-4 mt-4">
+                <button
+                    onClick={toggleAudio}
+                    className={`px-4 py-2 rounded-full ${
+                        isMuted ? 'bg-red-500' : 'bg-blue-500'
+                    } text-white`}
+                >
+                    {isMuted ? 'Unmute' : 'Mute'}
+                </button>
+                <button
+                    onClick={toggleVideo}
+                    className={`px-4 py-2 rounded-full ${
+                        isVideoOff ? 'bg-red-500' : 'bg-blue-500'
+                    } text-white`}
+                >
+                    {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
+                </button>
+                <button
+                    onClick={endCall}
+                    className="px-4 py-2 rounded-full bg-red-500 text-white"
+                >
+                    End Call
+                </button>
             </div>
+
+            {/* Pass remoteStream as a prop */}
+            {isTranslation ? (
+                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
+            ) : (
+                <p>NO TRANSLATION</p>
+            )}
         </div>
-
-        <div className="flex gap-4 mt-4">
-            <button
-                onClick={toggleAudio}
-                className={`px-4 py-2 rounded-full ${
-                    isMuted ? 'bg-red-500' : 'bg-blue-500'
-                } text-white`}
-            >
-                {isMuted ? 'Unmute' : 'Mute'}
-            </button>
-            <button
-                onClick={toggleVideo}
-                className={`px-4 py-2 rounded-full ${
-                    isVideoOff ? 'bg-red-500' : 'bg-blue-500'
-                } text-white`}
-            >
-                {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
-            </button>
-            <button
-                onClick={endCall}
-                className="px-4 py-2 rounded-full bg-red-500 text-white"
-            >
-                End Call
-            </button>
-        </div>
-
-        {/* add the component here  */}
-        {
-            isTranslation ? <TranslationArea callDocId={callDocId} isCaller={isCaller} /> : <p>NO TRANSLATION</p>
-        }
-
-        
-    </div>
     );
 };
 
