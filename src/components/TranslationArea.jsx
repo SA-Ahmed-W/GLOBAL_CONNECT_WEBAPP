@@ -154,16 +154,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
       </h2>
     </div>
 
-    {/* Right Section: Translation Textarea */}
-    {/* <div>
-      <textarea
-        readOnly
-        className="w-full p-4 border border-gray-400 rounded-lg text-gray-800 bg-gray-50"
-        rows="8"
-        value={translations.map((t) => t.text).join("\n")}
-        style={{ resize: "none" }}
-      ></textarea>
-    </div> */}
+
      {/* Transcriptions */}
      <div className="mt-4 p-2 border border-gray-400 rounded-lg bg-gray-50">
         {transcriptions.map((t, index) => (
@@ -179,29 +170,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream,remoteStream }
       </div>
   </div>
 
-  {/* Mobile View: Stack Input/Output Language Below Textarea */}
-  {/* <div className="block md:hidden mt-4">
-    <h2 className="text-lg">
-      Input Language: <span className="font-semibold">{inputLang}</span>
-    </h2>
-    <h2 className="text-lg mt-2">
-      Output Language: <span className="font-semibold">{outputLang}</span>
-    </h2>
-  </div> */}
-
-  {/* Translations List */}
-  {/* <div className="mt-2">
-    {translations.map((t, index) => (
-      <p
-        key={index}
-        className={`mt-1 ${
-          t.isLatest ? "text-black font-bold" : "text-gray-500"
-        }`}
-      >
-        {t.text}
-      </p>
-    ))}
-  </div> */}
+  
 </div>
 
   );
