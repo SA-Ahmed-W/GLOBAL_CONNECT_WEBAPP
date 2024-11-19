@@ -1,8 +1,6 @@
-// src/pages/Register.jsx
 import React, { useState } from "react";
-import { auth, storage, db } from "../config/firebase";
+import { auth, db } from "../config/firebase";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { setDoc, doc } from "firebase/firestore";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
@@ -11,7 +9,6 @@ const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [profilePic, setProfilePic] = useState(null);
   const navigate = useNavigate();
 
   const handleRegister = async (e) => {
@@ -20,12 +17,8 @@ const Register = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      let profilePicUrl = "";
-      if (profilePic) {
-        const storageRef = ref(storage, `profilePics/${user.uid}`);
-        await uploadBytes(storageRef, profilePic);
-        profilePicUrl = await getDownloadURL(storageRef);
-      }
+      // Generate a random profile picture URL
+      const profilePicUrl = `https://picsum.photos/200`;
 
       await updateProfile(user, {
         displayName: name,
@@ -74,11 +67,6 @@ const Register = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-          />
-          <input
-            type="file"
-            onChange={(e) => setProfilePic(e.target.files[0])}
-            className="w-full"
           />
           <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded">
             Register
