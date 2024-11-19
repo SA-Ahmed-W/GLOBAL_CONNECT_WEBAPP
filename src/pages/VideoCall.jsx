@@ -47,8 +47,6 @@ const VideoCall = () => {
         const pc = new RTCPeerConnection(servers);
         setupTransceivers(pc);
 
-       
-
         pc.ontrack = (event) => {
             if (remoteVideoRef.current && event.streams[0]) {
                 const stream = event.streams[0];
@@ -317,6 +315,7 @@ const VideoCall = () => {
                     <video
                         ref={remoteVideoRef}
                         autoPlay
+                        muted
                         playsInline
                         className="w-full rounded-lg shadow-lg"
                     />
@@ -353,7 +352,7 @@ const VideoCall = () => {
 
             {/* Pass remoteStream as a prop */}
             {isTranslation ? (
-                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
+                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteAudioStream={audioStream} />
             ) : (
                 <p>NO TRANSLATION</p>
             )}
