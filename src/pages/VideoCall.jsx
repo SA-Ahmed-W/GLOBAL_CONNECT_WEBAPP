@@ -109,25 +109,42 @@ const VideoCall = () => {
                 const stream = event.streams[0];
                 console.log(`${isCaller ? 'Caller' : 'Callee'} received remote stream`, stream);
                 
-                // Use requestAnimationFrame to ensure DOM is ready
-                requestAnimationFrame(() => {
-                    if (remoteVideoRef.current) {
-                        remoteVideoRef.current.srcObject = stream;
-                        setRemoteStream(stream);
+                setRemoteStream(stream);  // Set remote stream immediately
 
-                        const audioTracks = stream.getAudioTracks();
-                        if (audioTracks.length > 0) {
-                            const audioOnlyStream = new MediaStream(audioTracks);
-                            setAudioStream(audioOnlyStream);
-                        }
-                    }
-                });
+                // Handle audio stream
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    const audioOnlyStream = new MediaStream(audioTracks);
+                    setAudioStream(audioOnlyStream);
+                }
+                // Ensure video element gets the stream
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = stream;
+                    
+                    // Add play handler for autoplay issues
+                    remoteVideoRef.current.play().catch(error => {
+                        console.warn("Autoplay failed:", error);
+                    });
+                }
             }
         };
 
-        pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                handleICECandidateEvent(event.candidate);
+       // Enhanced ICE candidate handling
+       pc.onicecandidate = (event) => {
+        if (event.candidate) {
+            console.log("New ICE candidate:", event.candidate);
+            handleICECandidateEvent(event.candidate);
+        }
+    };
+
+         // Add connection state change handler
+         pc.onconnectionstatechange = () => {
+            console.log("Connection State:", pc.connectionState);
+            if (pc.connectionState === 'connected') {
+                setIsConnected(true);
+            } else if (pc.connectionState === 'failed') {
+                console.error("Connection failed - attempting reconnect");
+                // Implement reconnection logic if needed
             }
         };
 
@@ -135,10 +152,11 @@ const VideoCall = () => {
             console.log("ICE Connection State:", pc.iceConnectionState);
             if (pc.iceConnectionState === 'connected') {
                 setIsConnected(true);
+            } else if (pc.iceConnectionState === 'failed') {
+                console.error("ICE Connection failed");
             }
         };
 
-        // Add negotiation needed handler
         pc.onnegotiationneeded = async () => {
             console.log("Negotiation needed event triggered");
             if (isCaller && pc.signalingState === "stable") {
@@ -166,14 +184,22 @@ const VideoCall = () => {
             }
             localStreamRef.current = stream;
 
+            // Add tracks to peer connection
             if (peerConnectionRef.current) {
                 stream.getTracks().forEach(track => {
                     console.log(`Adding ${track.kind} track to peer connection`);
-                    peerConnectionRef.current.addTrack(track, stream);
+                    const sender = peerConnectionRef.current.addTrack(track, stream);
+                    console.log(`Added track sender:`, sender);
                 });
             }
         } catch (error) {
             console.error("Error accessing media devices:", error);
+            // Handle specific error cases
+            if (error.name === 'NotAllowedError') {
+                alert('Please allow camera and microphone access to use this app.');
+            } else if (error.name === 'NotFoundError') {
+                alert('No camera or microphone found. Please check your devices.');
+            }
         }
     }, []);
 
@@ -346,6 +372,22 @@ const VideoCall = () => {
         cleanup,
         navigate
     ]);
+
+     // Add new useEffect for monitoring remote stream
+     useEffect(() => {
+        if (remoteStream) {
+            console.log("Remote stream updated:", remoteStream);
+            
+            // Monitor track changes
+            remoteStream.onaddtrack = (event) => {
+                console.log("Track added to remote stream:", event.track);
+            };
+            
+            remoteStream.onremovetrack = (event) => {
+                console.log("Track removed from remote stream:", event.track);
+            };
+        }
+    }, [remoteStream]);
 
     useEffect(() => {
         const getIsTranslation = async () => {
