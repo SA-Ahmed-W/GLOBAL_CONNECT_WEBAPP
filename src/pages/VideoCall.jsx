@@ -52,17 +52,23 @@ const VideoCall = () => {
 
         pc.ontrack = (event) => {
             console.log("ontrack event triggered", event);
-            if (remoteVideoRef.current && event.streams[0]) {
+            if (event.streams && event.streams[0]) {
                 const stream = event.streams[0];
-                console.log("Setting remote stream", stream);
-                remoteVideoRef.current.srcObject = stream;
-                setRemoteStream(stream);
+                console.log(`${isCaller ? 'Caller' : 'Callee'} received remote stream`, stream);
+                
+                // Use requestAnimationFrame to ensure DOM is ready
+                requestAnimationFrame(() => {
+                    if (remoteVideoRef.current) {
+                        remoteVideoRef.current.srcObject = stream;
+                        setRemoteStream(stream);
 
-                const audioTracks = stream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    const audioOnlyStream = new MediaStream(audioTracks);
-                    setAudioStream(audioOnlyStream);
-                }
+                        const audioTracks = stream.getAudioTracks();
+                        if (audioTracks.length > 0) {
+                            const audioOnlyStream = new MediaStream(audioTracks);
+                            setAudioStream(audioOnlyStream);
+                        }
+                    }
+                });
             }
         };
 
@@ -79,9 +85,21 @@ const VideoCall = () => {
             }
         };
 
+        // Add negotiation needed handler
+        pc.onnegotiationneeded = async () => {
+            console.log("Negotiation needed event triggered");
+            if (isCaller && pc.signalingState === "stable") {
+                try {
+                    await createOffer();
+                } catch (err) {
+                    console.error("Error handling negotiationneeded:", err);
+                }
+            }
+        };
+
         peerConnectionRef.current = pc;
         return pc;
-    }, [servers, setupTransceivers]);
+    }, [servers, isCaller, createOffer]);
 
     const handleICECandidateEvent = useCallback(async (candidate) => {
         try {
@@ -118,11 +136,18 @@ const VideoCall = () => {
             }
             localStreamRef.current = stream;
 
-            stream.getTracks().forEach(track => {
-                if (peerConnectionRef.current) {
+            if (peerConnectionRef.current) {
+                stream.getTracks().forEach(track => {
+                    console.log(`Adding ${track.kind} track to peer connection`);
                     peerConnectionRef.current.addTrack(track, stream);
-                }
-            });
+                });
+            }
+
+            // stream.getTracks().forEach(track => {
+            //     if (peerConnectionRef.current) {
+            //         peerConnectionRef.current.addTrack(track, stream);
+            //     }
+            // });
         } catch (error) {
             console.error("Error accessing media devices:", error);
         }
@@ -132,12 +157,21 @@ const VideoCall = () => {
         try {
             if (!peerConnectionRef.current || 
                 !['stable', 'have-local-pranswer'].includes(peerConnectionRef.current.signalingState)) {
+                console.log("Cannot create offer in current state:", 
+                    peerConnectionRef.current?.signalingState);
                 return;
             }
 
-            const offer = await peerConnectionRef.current.createOffer();
+            console.log("Creating offer...");
+            const offer = await peerConnectionRef.current.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+            
+            console.log("Setting local description...");
             await peerConnectionRef.current.setLocalDescription(offer);
 
+            console.log("Updating offer in Firebase...");
             await updateDoc(callDocRef, {
                 offer: {
                     type: offer.type,
@@ -154,15 +188,23 @@ const VideoCall = () => {
             if (!peerConnectionRef.current || 
                 !['stable', 'have-remote-offer'].includes(peerConnectionRef.current.signalingState) ||
                 hasCreatedAnswer.current) {
+                console.log("Cannot handle offer in current state:", 
+                    peerConnectionRef.current?.signalingState);
                 return;
             }
 
+            console.log("Setting remote description from offer...");
             await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
+            
+            console.log("Creating answer...");
             const answer = await peerConnectionRef.current.createAnswer();
+            
+            console.log("Setting local description...");
             await peerConnectionRef.current.setLocalDescription(answer);
 
             hasCreatedAnswer.current = true;
 
+            console.log("Updating answer in Firebase...");
             await updateDoc(callDocRef, {
                 answer: {
                     type: answer.type,
@@ -259,7 +301,9 @@ const VideoCall = () => {
         if (pc) {
             setupLocalStream().then(() => {
                 if (isCaller) {
-                    createOffer();
+                    setTimeout(() => {
+                        createOffer();
+                    }, 1000);
                 }
             });
         }
