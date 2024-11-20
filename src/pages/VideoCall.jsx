@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { db } from '../config/firebase';
-import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
@@ -8,36 +8,28 @@ import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer
 const VideoCall = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const callDocId = location.state?.callId || "";
+    const callDocId = location.state?.callId || '';
     const isCaller = location.state?.isCaller || false;
 
     const [isTranslation, setIsTranslation] = useState(false);
     const [remoteStream, setRemoteStream] = useState(null);
     const [audioStream, setAudioStream] = useState(null);
+    const [isConnected, setIsConnected] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
 
-    // Refs
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
     const peerConnectionRef = useRef(null);
     const localStreamRef = useRef(null);
 
-    // State
-    const [isConnected, setIsConnected] = useState(false);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoOff, setIsVideoOff] = useState(false);
-
     const servers = useMemo(() => ({
         iceServers: [
-            {
-                urls: [
-                    'stun:stun1.l.google.com:19302',
-                    'stun:stun2.l.google.com:19302'
-                ]
-            }
-        ]
+            { urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'] },
+        ],
     }), []);
 
-    const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
+    const callDocRef = useMemo(() => doc(db, 'calls', callDocId), [callDocId]);
 
     const setupTransceivers = useCallback((pc) => {
         pc.addTransceiver('audio', { direction: 'sendrecv' });
@@ -49,18 +41,15 @@ const VideoCall = () => {
         setupTransceivers(pc);
 
         pc.ontrack = (event) => {
-            if (remoteVideoRef.current && event.streams[0]) {
-                const stream = event.streams[0];
-                remoteVideoRef.current.srcObject = stream
-
-                // Set the full remote stream
-                setRemoteStream(stream);
-
-                // Extract only the audio track and create an audio-only stream
-                const audioTracks = stream.getAudioTracks();
+            if (event.streams[0]) {
+                setRemoteStream(event.streams[0]);
+                const audioTracks = event.streams[0].getAudioTracks();
                 if (audioTracks.length > 0) {
                     const audioOnlyStream = new MediaStream(audioTracks);
                     setAudioStream(audioOnlyStream);
+                }
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = event.streams[0];
                 }
             }
         };
@@ -72,7 +61,7 @@ const VideoCall = () => {
         };
 
         pc.oniceconnectionstatechange = () => {
-            console.log("ICE Connection State:", pc.iceConnectionState);
+            console.log('ICE Connection State:', pc.iceConnectionState);
         };
 
         peerConnectionRef.current = pc;
@@ -80,91 +69,63 @@ const VideoCall = () => {
     }, [servers, setupTransceivers]);
 
     const handleICECandidateEvent = useCallback(async (candidate) => {
-        try {
-            const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
-            const docData = (await getDoc(callDocRef)).data();
-            await updateDoc(callDocRef, {
-                [field]: [...(docData?.[field] || []), candidate.toJSON()]
-            });
-        } catch (error) {
-            console.error("Error handling ICE candidate:", error);
-        }
+        const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
+        const docData = (await getDoc(callDocRef)).data();
+        await updateDoc(callDocRef, {
+            [field]: [...(docData?.[field] || []), candidate.toJSON()],
+        });
     }, [isCaller, callDocRef]);
 
     const setupLocalStream = useCallback(async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: true
-            });
-
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
             localVideoRef.current.srcObject = stream;
             localStreamRef.current = stream;
 
-            stream.getTracks().forEach(track => {
+            stream.getTracks().forEach((track) => {
                 peerConnectionRef.current.addTrack(track, stream);
             });
         } catch (error) {
-            console.error("Error accessing media devices:", error);
+            console.error('Error accessing media devices:', error);
         }
     }, []);
 
     const createOffer = useCallback(async () => {
-        try {
-            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "stable") return;
+        const pc = peerConnectionRef.current;
+        if (!pc || pc.signalingState !== 'stable') return;
 
-            const offer = await peerConnectionRef.current.createOffer();
-            await peerConnectionRef.current.setLocalDescription(offer);
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
 
-            await updateDoc(callDocRef, {
-                offer: {
-                    type: offer.type,
-                    sdp: offer.sdp
-                }
-            });
-        } catch (error) {
-            console.error("Error creating offer:", error);
-        }
+        await updateDoc(callDocRef, { offer: { type: offer.type, sdp: offer.sdp } });
     }, [callDocRef]);
 
     const handleOffer = useCallback(async (offer) => {
-        try {
-            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "stable") return;
+        const pc = peerConnectionRef.current;
+        if (!pc || pc.signalingState !== 'stable') return;
 
-            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
-            const answer = await peerConnectionRef.current.createAnswer();
-            await peerConnectionRef.current.setLocalDescription(answer);
+        await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
 
-            await updateDoc(callDocRef, {
-                answer: {
-                    type: answer.type,
-                    sdp: answer.sdp
-                }
-            });
-        } catch (error) {
-            console.error("Error handling offer:", error);
-        }
+        await updateDoc(callDocRef, { answer: { type: answer.type, sdp: answer.sdp } });
     }, [callDocRef]);
 
     const handleAnswer = useCallback(async (answer) => {
-        try {
-            if (!peerConnectionRef.current || peerConnectionRef.current.signalingState !== "have-local-offer") return;
+        const pc = peerConnectionRef.current;
+        if (!pc || pc.signalingState !== 'have-local-offer') return;
 
-            await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
-            setIsConnected(true);
-        } catch (error) {
-            console.error("Error handling answer:", error);
-        }
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        setIsConnected(true);
     }, []);
 
     const handleRemoteICECandidates = useCallback(async (candidates) => {
         if (!peerConnectionRef.current || !candidates?.length) return;
-
         for (const candidate of candidates) {
             try {
                 await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
             } catch (error) {
-                console.warn("Failed to add ICE candidate:", error);
+                console.warn('Failed to add ICE candidate:', error);
             }
         }
     }, []);
@@ -191,25 +152,19 @@ const VideoCall = () => {
 
     const endCall = useCallback(async () => {
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current.getTracks().forEach((track) => track.stop());
         }
         if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
         }
 
-        await updateDoc(callDocRef, {
-            status: 'ended',
-            endedAt: new Date().toISOString()
-        });
-
-        // await deleteDoc(callDocRef);
-
+        await updateDoc(callDocRef, { status: 'ended', endedAt: new Date().toISOString() });
         navigate('/');
     }, [callDocRef, navigate]);
 
     const cleanup = useCallback(() => {
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current.getTracks().forEach((track) => track.stop());
         }
         if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
@@ -219,14 +174,9 @@ const VideoCall = () => {
 
     useEffect(() => {
         const pc = initializePeerConnection();
-        if (pc) {
-            setupLocalStream().then(() => {
-                if (isCaller) {
-                    createOffer();
-                }
-            });
-        }
-
+        setupLocalStream().then(() => {
+            if (isCaller) createOffer();
+        });
         return cleanup;
     }, [initializePeerConnection, setupLocalStream, createOffer, cleanup, isCaller]);
 
@@ -236,11 +186,11 @@ const VideoCall = () => {
             if (!data) return;
 
             try {
-                if (!isCaller && data.offer && peerConnectionRef.current.signalingState === "stable") {
+                if (!isCaller && data.offer && peerConnectionRef.current.signalingState === 'stable') {
                     await handleOffer(data.offer);
                 }
 
-                if (isCaller && data.answer && peerConnectionRef.current.signalingState === "have-local-offer") {
+                if (isCaller && data.answer && peerConnectionRef.current.signalingState === 'have-local-offer') {
                     await handleAnswer(data.answer);
                 }
 
@@ -251,11 +201,10 @@ const VideoCall = () => {
 
                 if (data.status === 'ended') {
                     cleanup();
-                    // await deleteDoc(callDocRef);
                     navigate('/');
                 }
             } catch (error) {
-                console.error("Error in Firestore snapshot listener:", error);
+                console.error('Error in Firestore snapshot listener:', error);
             }
         });
 
@@ -263,39 +212,18 @@ const VideoCall = () => {
             unsubscribe();
             cleanup();
         };
-    }, [
-        callDocRef,
-        isCaller,
-        handleOffer,
-        handleAnswer,
-        handleRemoteICECandidates,
-        cleanup,
-        navigate
-    ]);
+    }, [callDocRef, isCaller, handleOffer, handleAnswer, handleRemoteICECandidates, cleanup, navigate]);
 
     useEffect(() => {
-        const getIsTranslation = async () => {
-            try {
-                // Fetch the document from Firestore
-                const docSnapshot = await getDoc(callDocRef);
-
-                // Check if the document exists and get the 'translationEnabled' field
-                if (docSnapshot.exists()) {
-                    const data = docSnapshot.data();
-                    const translationEnabled = data.translationEnabled;
-
-                    // Set the state with the fetched value
-                    setIsTranslation(translationEnabled);
-                } else {
-                    console.log("Document does not exist");
-                }
-            } catch (error) {
-                console.error("Error fetching document: ", error);
+        const fetchTranslationStatus = async () => {
+            const docSnapshot = await getDoc(callDocRef);
+            if (docSnapshot.exists()) {
+                setIsTranslation(docSnapshot.data()?.translationEnabled || false);
             }
         };
 
-        getIsTranslation();
-    }, []);
+        fetchTranslationStatus();
+    }, [callDocRef]);
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 p-4">
@@ -316,7 +244,6 @@ const VideoCall = () => {
                     <video
                         ref={remoteVideoRef}
                         autoPlay
-                        muted
                         playsInline
                         className="w-full rounded-lg shadow-lg"
                     />
@@ -326,19 +253,16 @@ const VideoCall = () => {
                 </div>
             </div>
             <RemoteStreamAudioEquilizer audioStream={audioStream} />
-
             <div className="flex gap-4 mt-4">
                 <button
                     onClick={toggleAudio}
-                    className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'
-                        } text-white`}
+                    className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'} text-white`}
                 >
                     {isMuted ? 'Unmute' : 'Mute'}
                 </button>
                 <button
                     onClick={toggleVideo}
-                    className={`px-4 py-2 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'
-                        } text-white`}
+                    className={`px-4 py-2 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'} text-white`}
                 >
                     {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
                 </button>
@@ -349,12 +273,10 @@ const VideoCall = () => {
                     End Call
                 </button>
             </div>
-
-            {/* Pass remoteStream as a prop */}
             {isTranslation ? (
                 <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
             ) : (
-                <p>NO TRANSLATION</p>
+                <p>No Translation</p>
             )}
         </div>
     );
