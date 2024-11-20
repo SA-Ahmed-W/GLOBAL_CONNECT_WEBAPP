@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { db } from '../config/firebase';
-import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
@@ -14,9 +14,6 @@ const VideoCall = () => {
     const [isTranslation, setIsTranslation] = useState(false);
     const [remoteStream, setRemoteStream] = useState(null);
     const [audioStream, setAudioStream] = useState(null);
-    const [isConnected, setIsConnected] = useState(false);
-    const [isMuted, setIsMuted] = useState(false);
-    const [isVideoOff, setIsVideoOff] = useState(false);
 
     // Refs
     const localVideoRef = useRef(null);
@@ -26,9 +23,12 @@ const VideoCall = () => {
     const hasSetRemoteAnswer = useRef(false);
     const hasCreatedAnswer = useRef(false);
 
-    const callDocRef = useRef(doc(db, "calls", callDocId));
+    // State
+    const [isConnected, setIsConnected] = useState(false);
+    const [isMuted, setIsMuted] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
 
-    const servers = {
+    const servers = useMemo(() => ({
         iceServers: [
             {
                 urls: [
@@ -37,55 +37,74 @@ const VideoCall = () => {
                 ]
             }
         ]
-    };
+    }), []);
 
-    const createPeerConnection = useCallback(() => {
-        if (peerConnectionRef.current) {
-            peerConnectionRef.current.close();
-        }
+    const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
 
+    const setupTransceivers = useCallback((pc) => {
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+        pc.addTransceiver('video', { direction: 'sendrecv' });
+    }, []);
+
+    const initializePeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(servers);
+        setupTransceivers(pc);
 
         pc.ontrack = (event) => {
-            if (event.streams && event.streams[0]) {
+            console.log("ontrack event triggered", event);
+            if (remoteVideoRef.current && event.streams[0]) {
                 const stream = event.streams[0];
+                console.log("Setting remote stream", stream);
+                remoteVideoRef.current.srcObject = stream;
                 setRemoteStream(stream);
 
-                if (stream.getAudioTracks().length > 0) {
-                    const audioOnlyStream = new MediaStream(stream.getAudioTracks());
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    const audioOnlyStream = new MediaStream(audioTracks);
                     setAudioStream(audioOnlyStream);
                 }
-
-                if (remoteVideoRef.current) {
-                    remoteVideoRef.current.srcObject = stream;
-                }
             }
         };
 
-        pc.onicecandidate = async (event) => {
-            if (!event.candidate) return;
-
-            const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
-            try {
-                const docSnapshot = await getDoc(callDocRef.current);
-                const data = docSnapshot.data() || {};
-                const candidates = data[field] || [];
-                
-                await updateDoc(callDocRef.current, {
-                    [field]: [...candidates, event.candidate.toJSON()]
-                });
-            } catch (error) {
-                console.error("Error handling ICE candidate:", error);
+        pc.onicecandidate = (event) => {
+            if (event.candidate) {
+                handleICECandidateEvent(event.candidate);
             }
         };
 
-        pc.onconnectionstatechange = () => {
-            setIsConnected(pc.connectionState === 'connected');
+        pc.oniceconnectionstatechange = () => {
+            console.log("ICE Connection State:", pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected') {
+                setIsConnected(true);
+            }
         };
 
         peerConnectionRef.current = pc;
         return pc;
-    }, [isCaller, servers]);
+    }, [servers, setupTransceivers]);
+
+    const handleICECandidateEvent = useCallback(async (candidate) => {
+        try {
+            const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
+            const docSnapshot = await getDoc(callDocRef);
+            const docData = docSnapshot.data() || {};
+            const currentCandidates = docData[field] || [];
+            
+            // Check if this candidate already exists
+            const candidateJson = candidate.toJSON();
+            const candidateExists = currentCandidates.some(
+                c => c.candidate === candidateJson.candidate
+            );
+
+            if (!candidateExists) {
+                await updateDoc(callDocRef, {
+                    [field]: [...currentCandidates, candidateJson]
+                });
+            }
+        } catch (error) {
+            console.error("Error handling ICE candidate:", error);
+        }
+    }, [isCaller, callDocRef]);
 
     const setupLocalStream = useCallback(async () => {
         try {
@@ -94,44 +113,57 @@ const VideoCall = () => {
                 video: true
             });
 
-            localStreamRef.current = stream;
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
             }
+            localStreamRef.current = stream;
 
-            if (peerConnectionRef.current && peerConnectionRef.current.connectionState !== 'closed') {
-                stream.getTracks().forEach(track => {
+            stream.getTracks().forEach(track => {
+                if (peerConnectionRef.current) {
                     peerConnectionRef.current.addTrack(track, stream);
-                });
-
-                if (isCaller) {
-                    const offer = await peerConnectionRef.current.createOffer();
-                    await peerConnectionRef.current.setLocalDescription(offer);
-                    
-                    await updateDoc(callDocRef.current, {
-                        offer: {
-                            type: offer.type,
-                            sdp: offer.sdp
-                        }
-                    });
                 }
-            }
+            });
         } catch (error) {
             console.error("Error accessing media devices:", error);
-            alert('Error accessing camera/microphone. Please check permissions.');
         }
-    }, [isCaller]);
+    }, []);
+
+    const createOffer = useCallback(async () => {
+        try {
+            if (!peerConnectionRef.current || 
+                !['stable', 'have-local-pranswer'].includes(peerConnectionRef.current.signalingState)) {
+                return;
+            }
+
+            const offer = await peerConnectionRef.current.createOffer();
+            await peerConnectionRef.current.setLocalDescription(offer);
+
+            await updateDoc(callDocRef, {
+                offer: {
+                    type: offer.type,
+                    sdp: offer.sdp
+                }
+            });
+        } catch (error) {
+            console.error("Error creating offer:", error);
+        }
+    }, [callDocRef]);
 
     const handleOffer = useCallback(async (offer) => {
-        if (!peerConnectionRef.current || hasCreatedAnswer.current) return;
-
         try {
+            if (!peerConnectionRef.current || 
+                !['stable', 'have-remote-offer'].includes(peerConnectionRef.current.signalingState) ||
+                hasCreatedAnswer.current) {
+                return;
+            }
+
             await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await peerConnectionRef.current.createAnswer();
             await peerConnectionRef.current.setLocalDescription(answer);
 
             hasCreatedAnswer.current = true;
-            await updateDoc(callDocRef.current, {
+
+            await updateDoc(callDocRef, {
                 answer: {
                     type: answer.type,
                     sdp: answer.sdp
@@ -140,49 +172,38 @@ const VideoCall = () => {
         } catch (error) {
             console.error("Error handling offer:", error);
         }
-    }, []);
+    }, [callDocRef]);
 
     const handleAnswer = useCallback(async (answer) => {
-        if (!peerConnectionRef.current || hasSetRemoteAnswer.current) return;
-
         try {
+            if (!peerConnectionRef.current || 
+                peerConnectionRef.current.signalingState !== "have-local-offer" ||
+                hasSetRemoteAnswer.current) {
+                return;
+            }
+
             await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(answer));
             hasSetRemoteAnswer.current = true;
+            setIsConnected(true);
         } catch (error) {
             console.error("Error handling answer:", error);
         }
     }, []);
 
-    const handleICECandidates = useCallback(async (candidates) => {
+    const handleRemoteICECandidates = useCallback(async (candidates) => {
         if (!peerConnectionRef.current || !candidates?.length) return;
 
+        const pc = peerConnectionRef.current;
+        
         for (const candidate of candidates) {
             try {
-                if (peerConnectionRef.current.remoteDescription) {
-                    await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                if (pc.remoteDescription) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
                 }
             } catch (error) {
                 console.warn("Failed to add ICE candidate:", error);
             }
         }
-    }, []);
-
-    const cleanup = useCallback(() => {
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
-            localStreamRef.current = null;
-        }
-
-        if (peerConnectionRef.current) {
-            peerConnectionRef.current.close();
-            peerConnectionRef.current = null;
-        }
-
-        setRemoteStream(null);
-        setAudioStream(null);
-        setIsConnected(false);
-        hasCreatedAnswer.current = false;
-        hasSetRemoteAnswer.current = false;
     }, []);
 
     const toggleAudio = useCallback(() => {
@@ -206,88 +227,103 @@ const VideoCall = () => {
     }, []);
 
     const endCall = useCallback(async () => {
-        try {
-            await updateDoc(callDocRef.current, {
-                status: 'ended',
-                endedAt: new Date().toISOString()
-            });
-            cleanup();
-            navigate('/');
-        } catch (error) {
-            console.error("Error ending call:", error);
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
         }
-    }, [cleanup, navigate]);
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+        }
 
-    // Initialize connection
+        await updateDoc(callDocRef, {
+            status: 'ended',
+            endedAt: new Date().toISOString()
+        });
+
+        navigate('/');
+    }, [callDocRef, navigate]);
+
+    const cleanup = useCallback(() => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+        }
+        setIsConnected(false);
+        hasCreatedAnswer.current = false;
+        hasSetRemoteAnswer.current = false;
+    }, []);
+
     useEffect(() => {
-        let unsubscribe;
-
-        const initializeCall = async () => {
-            createPeerConnection();
-            await setupLocalStream();
-
-            unsubscribe = onSnapshot(callDocRef.current, async (snapshot) => {
-                const data = snapshot.data();
-                if (!data) return;
-
-                try {
-                    if (!isCaller && data.offer && !hasCreatedAnswer.current) {
-                        await handleOffer(data.offer);
-                    }
-
-                    if (isCaller && data.answer && !hasSetRemoteAnswer.current) {
-                        await handleAnswer(data.answer);
-                    }
-
-                    const candidates = isCaller ? data.calleeCandidates : data.callerCandidates;
-                    if (candidates?.length) {
-                        await handleICECandidates(candidates);
-                    }
-
-                    if (data.status === 'ended') {
-                        cleanup();
-                        navigate('/');
-                    }
-                } catch (error) {
-                    console.error("Error in call setup:", error);
+        const pc = initializePeerConnection();
+        if (pc) {
+            setupLocalStream().then(() => {
+                if (isCaller) {
+                    createOffer();
                 }
             });
-        };
+        }
 
-        initializeCall();
+        return cleanup;
+    }, [initializePeerConnection, setupLocalStream, createOffer, cleanup, isCaller]);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(callDocRef, async (snapshot) => {
+            const data = snapshot.data();
+            if (!data) return;
+
+            try {
+                if (!isCaller && data.offer && !hasCreatedAnswer.current) {
+                    await handleOffer(data.offer);
+                }
+
+                if (isCaller && data.answer && !hasSetRemoteAnswer.current) {
+                    await handleAnswer(data.answer);
+                }
+
+                const candidates = isCaller ? data.calleeCandidates : data.callerCandidates;
+                if (candidates?.length) {
+                    await handleRemoteICECandidates(candidates);
+                }
+
+                if (data.status === 'ended') {
+                    cleanup();
+                    navigate('/');
+                }
+            } catch (error) {
+                console.error("Error in Firestore snapshot listener:", error);
+            }
+        });
 
         return () => {
-            if (unsubscribe) {
-                unsubscribe();
-            }
+            unsubscribe();
             cleanup();
         };
     }, [
-        createPeerConnection,
-        setupLocalStream,
+        callDocRef,
         isCaller,
         handleOffer,
         handleAnswer,
-        handleICECandidates,
+        handleRemoteICECandidates,
         cleanup,
         navigate
     ]);
 
-    // Check translation status
     useEffect(() => {
-        const checkTranslation = async () => {
+        const getIsTranslation = async () => {
             try {
-                const docSnapshot = await getDoc(callDocRef.current);
+                const docSnapshot = await getDoc(callDocRef);
                 if (docSnapshot.exists()) {
-                    setIsTranslation(docSnapshot.data().translationEnabled);
+                    const data = docSnapshot.data();
+                    setIsTranslation(data.translationEnabled);
                 }
             } catch (error) {
-                console.error("Error checking translation status:", error);
+                console.error("Error fetching translation status:", error);
             }
         };
 
-        checkTranslation();
-    }, []);
+        getIsTranslation();
+    }, [callDocRef]);
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 p-4">
