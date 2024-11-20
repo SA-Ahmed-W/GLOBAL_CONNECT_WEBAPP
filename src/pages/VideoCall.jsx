@@ -46,6 +46,59 @@ const VideoCall = () => {
         pc.addTransceiver('video', { direction: 'sendrecv' });
     }, []);
 
+    const handleICECandidateEvent = useCallback(async (candidate) => {
+        try {
+            const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
+            const docSnapshot = await getDoc(callDocRef);
+            const docData = docSnapshot.data() || {};
+            const currentCandidates = docData[field] || [];
+            
+            // Check if this candidate already exists
+            const candidateJson = candidate.toJSON();
+            const candidateExists = currentCandidates.some(
+                c => c.candidate === candidateJson.candidate
+            );
+
+            if (!candidateExists) {
+                await updateDoc(callDocRef, {
+                    [field]: [...currentCandidates, candidateJson]
+                });
+            }
+        } catch (error) {
+            console.error("Error handling ICE candidate:", error);
+        }
+    }, [isCaller, callDocRef]);
+
+    const createOffer = useCallback(async () => {
+        try {
+            if (!peerConnectionRef.current || 
+                !['stable', 'have-local-pranswer'].includes(peerConnectionRef.current.signalingState)) {
+                console.log("Cannot create offer in current state:", 
+                    peerConnectionRef.current?.signalingState);
+                return;
+            }
+
+            console.log("Creating offer...");
+            const offer = await peerConnectionRef.current.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+            
+            console.log("Setting local description...");
+            await peerConnectionRef.current.setLocalDescription(offer);
+
+            console.log("Updating offer in Firebase...");
+            await updateDoc(callDocRef, {
+                offer: {
+                    type: offer.type,
+                    sdp: offer.sdp
+                }
+            });
+        } catch (error) {
+            console.error("Error creating offer:", error);
+        }
+    }, [callDocRef]);
+
     const initializePeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(servers);
         setupTransceivers(pc);
@@ -99,30 +152,7 @@ const VideoCall = () => {
 
         peerConnectionRef.current = pc;
         return pc;
-    }, [servers, isCaller, createOffer]);
-
-    const handleICECandidateEvent = useCallback(async (candidate) => {
-        try {
-            const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
-            const docSnapshot = await getDoc(callDocRef);
-            const docData = docSnapshot.data() || {};
-            const currentCandidates = docData[field] || [];
-            
-            // Check if this candidate already exists
-            const candidateJson = candidate.toJSON();
-            const candidateExists = currentCandidates.some(
-                c => c.candidate === candidateJson.candidate
-            );
-
-            if (!candidateExists) {
-                await updateDoc(callDocRef, {
-                    [field]: [...currentCandidates, candidateJson]
-                });
-            }
-        } catch (error) {
-            console.error("Error handling ICE candidate:", error);
-        }
-    }, [isCaller, callDocRef]);
+    }, [servers, isCaller, createOffer, handleICECandidateEvent, setupTransceivers]);
 
     const setupLocalStream = useCallback(async () => {
         try {
@@ -142,46 +172,10 @@ const VideoCall = () => {
                     peerConnectionRef.current.addTrack(track, stream);
                 });
             }
-
-            // stream.getTracks().forEach(track => {
-            //     if (peerConnectionRef.current) {
-            //         peerConnectionRef.current.addTrack(track, stream);
-            //     }
-            // });
         } catch (error) {
             console.error("Error accessing media devices:", error);
         }
     }, []);
-
-    const createOffer = useCallback(async () => {
-        try {
-            if (!peerConnectionRef.current || 
-                !['stable', 'have-local-pranswer'].includes(peerConnectionRef.current.signalingState)) {
-                console.log("Cannot create offer in current state:", 
-                    peerConnectionRef.current?.signalingState);
-                return;
-            }
-
-            console.log("Creating offer...");
-            const offer = await peerConnectionRef.current.createOffer({
-                offerToReceiveAudio: true,
-                offerToReceiveVideo: true
-            });
-            
-            console.log("Setting local description...");
-            await peerConnectionRef.current.setLocalDescription(offer);
-
-            console.log("Updating offer in Firebase...");
-            await updateDoc(callDocRef, {
-                offer: {
-                    type: offer.type,
-                    sdp: offer.sdp
-                }
-            });
-        } catch (error) {
-            console.error("Error creating offer:", error);
-        }
-    }, [callDocRef]);
 
     const handleOffer = useCallback(async (offer) => {
         try {
@@ -268,6 +262,18 @@ const VideoCall = () => {
         }
     }, []);
 
+    const cleanup = useCallback(() => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+        }
+        setIsConnected(false);
+        hasCreatedAnswer.current = false;
+        hasSetRemoteAnswer.current = false;
+    }, []);
+
     const endCall = useCallback(async () => {
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => track.stop());
@@ -283,18 +289,6 @@ const VideoCall = () => {
 
         navigate('/');
     }, [callDocRef, navigate]);
-
-    const cleanup = useCallback(() => {
-        if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
-        }
-        if (peerConnectionRef.current) {
-            peerConnectionRef.current.close();
-        }
-        setIsConnected(false);
-        hasCreatedAnswer.current = false;
-        hasSetRemoteAnswer.current = false;
-    }, []);
 
     useEffect(() => {
         const pc = initializePeerConnection();
