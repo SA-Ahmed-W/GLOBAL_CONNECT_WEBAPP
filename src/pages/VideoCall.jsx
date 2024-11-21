@@ -26,6 +26,7 @@ const VideoCall = () => {
     const [isConnected, setIsConnected] = useState(false);
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
+    const [connectionError, setConnectionError] = useState(null);
 
     const localVideoRef = useRef(null);
     const remoteVideoRef = useRef(null);
@@ -60,73 +61,97 @@ const VideoCall = () => {
         }
     }, []);
 
-    // Create and configure peer connection
     const createPeerConnection = useCallback(async () => {
         const localStream = localStreamRef.current;
         if (!localStream) {
             console.error('Local stream not initialized');
+            setConnectionError('Local stream could not be initialized');
             return null;
         }
 
-        const peer = new Peer({
-            initiator: isCaller,
-            trickle: true,
-            stream: localStream
-        });
-
-        // Handle signaling data
-        peer.on('signal', async (signalData) => {
-            const docRef = getCallDocRef();
-            if (!docRef) return;
-
-            try {
-                if (signalData.type === 'offer') {
-                    await updateDoc(docRef, { 
-                        offer: signalData,
-                        createdAt: serverTimestamp()
-                    });
-                } else if (signalData.type === 'answer') {
-                    await updateDoc(docRef, { 
-                        answer: signalData,
-                        updatedAt: serverTimestamp()
-                    });
-                } else if (signalData.candidate) {
-                    const candidateField = isCaller ? 'callerCandidates' : 'calleeCandidates';
-                    await updateDoc(docRef, {
-                        [candidateField]: arrayUnion(signalData)
-                    });
+        try {
+            const peer = new Peer({
+                initiator: isCaller,
+                trickle: true,
+                stream: localStream,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { 
+                            urls: 'turn:openrelay.metered.ca:80',
+                            username: 'openrelayproject',
+                            credential: 'openrelayproject' 
+                        }
+                    ]
                 }
-            } catch (error) {
-                console.error('Error storing signaling data:', error);
+            });
+
+            // Ensure peer methods exist before attaching listeners
+            if (!peer.signal) {
+                throw new Error('Peer connection not properly initialized');
             }
-        });
 
-        // Handle remote stream
-        peer.on('stream', (stream) => {
-            console.log('Remote stream received');
-            if (remoteVideoRef.current) {
-                remoteVideoRef.current.srcObject = stream;
-            }
-            setRemoteStream(stream);
-            
-            const audioTracks = stream.getAudioTracks();
-            if (audioTracks.length > 0) {
-                setAudioStream(new MediaStream(audioTracks));
-            }
-        });
+            // Handle signaling data
+            peer.on('signal', async (signalData) => {
+                const docRef = getCallDocRef();
+                if (!docRef) return;
 
-        peer.on('connect', () => {
-            console.log('Peer connection established');
-            setIsConnected(true);
-        });
+                try {
+                    if (signalData.type === 'offer') {
+                        await updateDoc(docRef, { 
+                            offer: JSON.parse(JSON.stringify(signalData)),
+                            createdAt: serverTimestamp()
+                        });
+                    } else if (signalData.type === 'answer') {
+                        await updateDoc(docRef, { 
+                            answer: JSON.parse(JSON.stringify(signalData)),
+                            updatedAt: serverTimestamp()
+                        });
+                    } else if (signalData.candidate) {
+                        const candidateField = isCaller ? 'callerCandidates' : 'calleeCandidates';
+                        await updateDoc(docRef, {
+                            [candidateField]: arrayUnion(JSON.parse(JSON.stringify(signalData)))
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error storing signaling data:', error);
+                    setConnectionError('Failed to store signaling data');
+                }
+            });
 
-        peer.on('error', (err) => {
-            console.error('Peer connection error:', err);
-        });
+            // Handle remote stream
+            peer.on('stream', (stream) => {
+                console.log('Remote stream received');
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.srcObject = stream;
+                }
+                setRemoteStream(stream);
+                
+                const audioTracks = stream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    setAudioStream(new MediaStream(audioTracks));
+                }
+            });
 
-        return peer;
+            peer.on('connect', () => {
+                console.log('Peer connection established');
+                setIsConnected(true);
+                setConnectionError(null);
+            });
+
+            peer.on('error', (err) => {
+                console.error('Peer connection error:', err);
+                setConnectionError(`Peer connection error: ${err.message}`);
+            });
+
+            return peer;
+        } catch (error) {
+            console.error('Failed to create peer connection:', error);
+            setConnectionError(`Failed to create peer connection: ${error.message}`);
+            return null;
+        }
     }, [isCaller, getCallDocRef]);
-
     // Handle remote signal
     const handleRemoteSignal = useCallback((signal) => {
         if (peerRef.current) {
@@ -253,6 +278,12 @@ const VideoCall = () => {
 
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 p-4">
+            {connectionError && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong className="font-bold">Connection Error: </strong>
+                    <span className="block sm:inline">{connectionError}</span>
+                </div>
+            )}
             <div className="grid grid-cols-2 gap-4 mb-4 w-full max-w-4xl">
                 <div className="relative">
                     <video
