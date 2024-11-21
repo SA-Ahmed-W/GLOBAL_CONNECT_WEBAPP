@@ -47,30 +47,41 @@ const VideoCall = () => {
             console.error('Local stream not initialized');
             return;
         }
-
+    
         const peer = new Peer({
             initiator: isCaller,
-            trickle: false,
+            trickle: true, // Enable trickle to handle ICE candidates automatically
             stream: localStreamRef.current,
         });
-
+    
         peer.on('signal', async (data) => {
             const docRef = callDocRef();
             if (!docRef) return;
-
-            const field = isCaller ? 'offer' : 'answer';
-            try {
-                await updateDoc(docRef, { [field]: data });
-            } catch (error) {
-                console.error(`Error updating ${field} in Firestore:`, error);
+    
+            if (data.type === 'offer' || data.type === 'answer') {
+                const field = isCaller ? 'offer' : 'answer';
+                try {
+                    await updateDoc(docRef, { [field]: data });
+                } catch (error) {
+                    console.error(`Error updating ${field} in Firestore:`, error);
+                }
+            } else if (data.candidate) {
+                try {
+                    const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
+                    await updateDoc(docRef, {
+                        [field]: updateDoc.FieldValue.arrayUnion(data),
+                    });
+                } catch (error) {
+                    console.error('Error storing ICE candidate:', error);
+                }
             }
         });
-
+    
         peer.on('connect', () => {
             console.log('Peer connection established');
             setIsConnected(true);
         });
-
+    
         peer.on('stream', (stream) => {
             setRemoteStream(stream);
             const audioTracks = stream.getAudioTracks();
@@ -81,18 +92,14 @@ const VideoCall = () => {
                 remoteVideoRef.current.srcObject = stream;
             }
         });
-
-        peer.on('close', () => {
-            console.log('Peer connection closed');
-            setIsConnected(false);
-        });
-
+    
         peer.on('error', (err) => {
             console.error('Peer connection error:', err);
         });
-
+    
         peerRef.current = peer;
     }, [isCaller, callDocRef]);
+    
 
     const handleRemoteSignal = useCallback(async (signal) => {
         if (!peerRef.current) {
@@ -143,27 +150,39 @@ const VideoCall = () => {
     useEffect(() => {
         setupLocalStream();
         createPeerConnection();
-
+    
         const docRef = callDocRef();
         if (!docRef) return;
-
+    
         const unsubscribe = onSnapshot(docRef, async (snapshot) => {
             const data = snapshot.data();
             if (!data) return;
-
+    
             console.log('Firestore update:', data);
-
+    
             if (isCaller && data.answer) {
                 await handleRemoteSignal(data.answer);
             } else if (!isCaller && data.offer) {
                 await handleRemoteSignal(data.offer);
             }
-
+    
+            if (data.callerCandidates && !isCaller) {
+                data.callerCandidates.forEach((candidate) => {
+                    if (peerRef.current) peerRef.current.signal(candidate);
+                });
+            }
+    
+            if (data.calleeCandidates && isCaller) {
+                data.calleeCandidates.forEach((candidate) => {
+                    if (peerRef.current) peerRef.current.signal(candidate);
+                });
+            }
+    
             if (data.status === 'ended') {
                 endCall();
             }
         });
-
+    
         return () => {
             unsubscribe();
             if (peerRef.current) {
@@ -171,6 +190,7 @@ const VideoCall = () => {
             }
         };
     }, [setupLocalStream, createPeerConnection, callDocRef, handleRemoteSignal, isCaller, endCall]);
+    
 
     useEffect(() => {
         const fetchTranslationStatus = async () => {
