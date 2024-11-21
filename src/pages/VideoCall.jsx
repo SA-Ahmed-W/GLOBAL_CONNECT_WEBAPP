@@ -32,7 +32,6 @@ const VideoCall = () => {
     const remoteVideoRef = useRef(null);
     const localStreamRef = useRef(null);
     const peerRef = useRef(null);
-    const snapshotUnsubscribeRef = useRef(null);
 
     const getCallDocRef = useCallback(() => {
         if (!callDocId) {
@@ -72,7 +71,9 @@ const VideoCall = () => {
 
             const localStream = localStreamRef.current;
             if (localStream) {
-                peer.addStream(localStream);
+                localStream.getTracks().forEach((track) => {
+                    peer.addTrack(track, localStream); // Use addTrack instead of addStream
+                });
             }
 
             peer.on('signal', async (signalData) => {
@@ -105,7 +106,8 @@ const VideoCall = () => {
                 }
             });
 
-            peer.on('stream', (stream) => {
+            peer.on('track', (event) => {
+                const stream = event.streams[0];
                 if (remoteVideoRef.current) {
                     remoteVideoRef.current.srcObject = stream;
                 }
@@ -161,9 +163,6 @@ const VideoCall = () => {
         if (peerRef.current) {
             peerRef.current.destroy();
         }
-        if (snapshotUnsubscribeRef.current) {
-            snapshotUnsubscribeRef.current();
-        }
 
         const docRef = getCallDocRef();
         if (docRef) {
@@ -188,6 +187,10 @@ const VideoCall = () => {
                     const data = snapshot.data();
                     if (!data) return;
 
+                    if (data.status === 'ended') {
+                        endCall();
+                    }
+
                     if (isCaller && data.answer) handleRemoteSignal(data.answer);
                     else if (!isCaller && data.offer) handleRemoteSignal(data.offer);
 
@@ -199,14 +202,16 @@ const VideoCall = () => {
                     );
                 });
 
-                snapshotUnsubscribeRef.current = unsubscribe;
+                return () => unsubscribe();
             }
         };
 
         initialize();
-
         return () => {
-            endCall();
+            localStreamRef.current?.getTracks().forEach((track) => track.stop());
+            if (peerRef.current) {
+                peerRef.current.destroy();
+            }
         };
     }, [
         setupLocalStream,
@@ -259,7 +264,6 @@ const VideoCall = () => {
                     <video
                         ref={remoteVideoRef}
                         autoPlay
-                        muted
                         playsInline
                         className="w-full rounded-lg shadow-lg"
                     />
