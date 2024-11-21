@@ -4,7 +4,7 @@ import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
-import Peer from 'peer-webrtc';
+import Peer from 'simple-peer'; // Ensure simple-peer is installed
 
 const VideoCall = () => {
     const location = useLocation();
@@ -30,7 +30,9 @@ const VideoCall = () => {
     const setupLocalStream = useCallback(async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-            localVideoRef.current.srcObject = stream;
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
             localStreamRef.current = stream;
         } catch (error) {
             console.error('Error accessing media devices:', error);
@@ -38,10 +40,15 @@ const VideoCall = () => {
     }, []);
 
     const createPeerConnection = useCallback(() => {
-        const peer = new Peer();
+        const peer = new Peer({
+            initiator: isCaller,
+            trickle: false,
+            stream: localStreamRef.current,
+        });
 
-        peer.on('open', () => {
-            console.log('Peer connection open');
+        peer.on('signal', async (data) => {
+            const field = isCaller ? 'offer' : 'answer';
+            await updateDoc(callDocRef(), { [field]: data });
         });
 
         peer.on('stream', (stream) => {
@@ -56,12 +63,9 @@ const VideoCall = () => {
             }
         });
 
-        peer.on('signal', async (data) => {
-            const docSnapshot = await getDoc(callDocRef());
-            if (docSnapshot.exists()) {
-                const field = isCaller ? 'offer' : 'answer';
-                await updateDoc(callDocRef(), { [field]: data });
-            }
+        peer.on('connect', () => {
+            console.log('Peer connection established');
+            setIsConnected(true);
         });
 
         peer.on('close', () => {
@@ -76,16 +80,9 @@ const VideoCall = () => {
         peerRef.current = peer;
     }, [isCaller, callDocRef]);
 
-    const handleRemoteSignal = useCallback(async (signal) => {
-        if (!peerRef.current) return;
-        peerRef.current.signal(signal);
-    }, []);
-
-    const handleICECandidates = useCallback(async (candidates) => {
+    const handleRemoteSignal = useCallback((signal) => {
         if (peerRef.current) {
-            candidates.forEach((candidate) => {
-                peerRef.current.signal(candidate);
-            });
+            peerRef.current.signal(signal);
         }
     }, []);
 
@@ -123,30 +120,23 @@ const VideoCall = () => {
 
     useEffect(() => {
         setupLocalStream();
-        createPeerConnection();
-
-        if (isCaller) {
-            const peer = peerRef.current;
-            const stream = localStreamRef.current;
-            if (peer && stream) {
-                stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-            }
-        }
 
         const unsubscribe = onSnapshot(callDocRef(), async (snapshot) => {
             const data = snapshot.data();
             if (!data) return;
 
             if (isCaller && data.answer) {
-                await handleRemoteSignal(data.answer);
+                handleRemoteSignal(data.answer);
             } else if (!isCaller && data.offer) {
-                await handleRemoteSignal(data.offer);
+                handleRemoteSignal(data.offer);
             }
 
             if (data.status === 'ended') {
                 endCall();
             }
         });
+
+        createPeerConnection();
 
         return () => {
             unsubscribe();
