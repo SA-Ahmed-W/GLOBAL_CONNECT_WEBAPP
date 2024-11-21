@@ -32,6 +32,7 @@ const VideoCall = () => {
     const remoteVideoRef = useRef(null);
     const localStreamRef = useRef(null);
     const peerRef = useRef(null);
+    const snapshotUnsubscribeRef = useRef(null);
 
     const getCallDocRef = useCallback(() => {
         if (!callDocId) {
@@ -61,24 +62,18 @@ const VideoCall = () => {
     }, []);
 
     const createPeerConnection = useCallback(async () => {
-        const localStream = localStreamRef.current;
-        if (!localStream) {
-            console.error('Local stream not initialized');
-            setConnectionError('Local stream could not be initialized');
-            return null;
-        }
-
         try {
             const peer = new PeerConnection({
-                config: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                    ],
-                },
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                ],
             });
 
-            peer.addStream(localStream);
+            const localStream = localStreamRef.current;
+            if (localStream) {
+                peer.addStream(localStream);
+            }
 
             peer.on('signal', async (signalData) => {
                 const docRef = getCallDocRef();
@@ -97,10 +92,16 @@ const VideoCall = () => {
                             answer: signalData,
                             updatedAt: serverTimestamp(),
                         });
+                    } else if (signalData.candidate) {
+                        const candidateField = isCaller
+                            ? 'callerCandidates'
+                            : 'calleeCandidates';
+                        await updateDoc(docRef, {
+                            [candidateField]: arrayUnion(signalData),
+                        });
                     }
                 } catch (error) {
-                    console.error('Signaling error:', error);
-                    setConnectionError('Failed to send signal');
+                    console.error('Error handling signaling data:', error);
                 }
             });
 
@@ -112,31 +113,29 @@ const VideoCall = () => {
 
                 const audioTracks = stream.getAudioTracks();
                 if (audioTracks.length > 0) {
-                    const audioOnlyStream = new MediaStream(audioTracks);
-                    setAudioStream(audioOnlyStream);
+                    setAudioStream(new MediaStream(audioTracks));
                 }
             });
 
             peer.on('connect', () => {
                 setIsConnected(true);
-                setConnectionError(null);
             });
 
-            peer.on('error', (err) => {
-                console.error('Peer connection error:', err);
-                setConnectionError(`Connection failed: ${err.message}`);
+            peer.on('error', (error) => {
+                console.error('Peer error:', error);
+                setConnectionError(`Connection failed: ${error.message}`);
             });
 
             return peer;
         } catch (error) {
-            console.error('Peer connection creation error:', error);
+            console.error('Peer connection creation failed:', error);
             setConnectionError('Could not create peer connection');
             return null;
         }
-    }, [getCallDocRef]);
+    }, [getCallDocRef, isCaller]);
 
     const handleRemoteSignal = useCallback((signal) => {
-        if (peerRef.current && signal) {
+        if (peerRef.current) {
             peerRef.current.signal(signal);
         }
     }, []);
@@ -159,9 +158,11 @@ const VideoCall = () => {
 
     const endCall = useCallback(async () => {
         localStreamRef.current?.getTracks().forEach((track) => track.stop());
-
         if (peerRef.current) {
             peerRef.current.destroy();
+        }
+        if (snapshotUnsubscribeRef.current) {
+            snapshotUnsubscribeRef.current();
         }
 
         const docRef = getCallDocRef();
@@ -176,54 +177,37 @@ const VideoCall = () => {
     }, [getCallDocRef, navigate]);
 
     useEffect(() => {
-        let cleanup = () => {};
-
-        const initializeCall = async () => {
+        const initialize = async () => {
             await setupLocalStream();
             const peer = await createPeerConnection();
-
-            if (peer) {
-                peerRef.current = peer;
-            }
+            if (peer) peerRef.current = peer;
 
             const docRef = getCallDocRef();
-            if (!docRef) return;
+            if (docRef) {
+                const unsubscribe = onSnapshot(docRef, (snapshot) => {
+                    const data = snapshot.data();
+                    if (!data) return;
 
-            const unsubscribe = onSnapshot(docRef, async (snapshot) => {
-                const data = snapshot.data();
-                if (!data) return;
+                    if (isCaller && data.answer) handleRemoteSignal(data.answer);
+                    else if (!isCaller && data.offer) handleRemoteSignal(data.offer);
 
-                if (isCaller && data.answer) {
-                    handleRemoteSignal(data.answer);
-                } else if (!isCaller && data.offer) {
-                    handleRemoteSignal(data.offer);
-                }
-
-                const candidateField = isCaller
-                    ? 'calleeCandidates'
-                    : 'callerCandidates';
-                const candidates = data[candidateField] || [];
-
-                candidates.forEach((candidate) => {
-                    if (peerRef.current) {
-                        peerRef.current.signal(candidate);
-                    }
+                    const candidates = isCaller
+                        ? data.calleeCandidates || []
+                        : data.callerCandidates || [];
+                    candidates.forEach((candidate) =>
+                        peerRef.current?.signal(candidate)
+                    );
                 });
 
-                if (data.status === 'ended') {
-                    endCall();
-                }
-            });
-
-            cleanup = () => {
-                unsubscribe();
-                peerRef.current?.destroy();
-            };
+                snapshotUnsubscribeRef.current = unsubscribe;
+            }
         };
 
-        initializeCall();
+        initialize();
 
-        return () => cleanup();
+        return () => {
+            endCall();
+        };
     }, [
         setupLocalStream,
         createPeerConnection,
