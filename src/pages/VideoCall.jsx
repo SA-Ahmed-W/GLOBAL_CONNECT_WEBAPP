@@ -33,22 +33,32 @@ const VideoCall = () => {
     const callDocRef = useMemo(() => doc(db, 'calls', callDocId), [callDocId]);
 
     const setupTransceivers = useCallback((pc) => {
-        pc.addTransceiver('audio', { direction: 'sendrecv' });
-        pc.addTransceiver('video', { direction: 'sendrecv' });
+        if (RTCRtpTransceiver.prototype.setDirection) {
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+            pc.addTransceiver('video', { direction: 'sendrecv' });
+        }
     }, []);
 
     const initializePeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(servers);
+        
+        // Setup tracks before creating offer/answer
         setupTransceivers(pc);
 
         pc.ontrack = (event) => {
-            if (event.streams[0]) {
+            console.log('ontrack event:', event);
+            if (event.streams && event.streams[0]) {
+                console.log('Setting remote stream');
                 setRemoteStream(event.streams[0]);
+                
+                // Extract audio tracks
                 const audioTracks = event.streams[0].getAudioTracks();
                 if (audioTracks.length > 0) {
                     const audioOnlyStream = new MediaStream(audioTracks);
                     setAudioStream(audioOnlyStream);
                 }
+
+                // Ensure remote video is set
                 if (remoteVideoRef.current) {
                     remoteVideoRef.current.srcObject = event.streams[0];
                 }
@@ -63,6 +73,13 @@ const VideoCall = () => {
 
         pc.oniceconnectionstatechange = () => {
             console.log('ICE Connection State:', pc.iceConnectionState);
+            if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+                setIsConnected(true);
+            }
+        };
+
+        pc.onconnectionstatechange = () => {
+            console.log('Connection State:', pc.connectionState);
         };
 
         peerConnectionRef.current = pc;
@@ -71,36 +88,62 @@ const VideoCall = () => {
 
     const handleICECandidateEvent = useCallback(async (candidate) => {
         const field = isCaller ? 'callerCandidates' : 'calleeCandidates';
-        const docData = (await getDoc(callDocRef)).data();
-        await updateDoc(callDocRef, {
-            [field]: [...(docData?.[field] || []), candidate.toJSON()],
-        });
+        try {
+            const docData = (await getDoc(callDocRef)).data() || {};
+            const candidates = docData[field] || [];
+            await updateDoc(callDocRef, {
+                [field]: [...candidates, candidate.toJSON()]
+            });
+        } catch (error) {
+            console.error('Error handling ICE candidate:', error);
+        }
     }, [isCaller, callDocRef]);
 
     const setupLocalStream = useCallback(async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-            localVideoRef.current.srcObject = stream;
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                audio: true, 
+                video: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                } 
+            });
+            
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
+            
             localStreamRef.current = stream;
 
-            stream.getTracks().forEach((track) => {
-                peerConnectionRef.current.addTrack(track, stream);
-            });
+            // Ensure peer connection exists before adding tracks
+            if (peerConnectionRef.current) {
+                stream.getTracks().forEach(track => {
+                    console.log('Adding track to peer connection:', track.kind);
+                    peerConnectionRef.current.addTrack(track, stream);
+                });
+            }
+
+            return stream;
         } catch (error) {
             console.error('Error accessing media devices:', error);
+            throw error;
         }
     }, []);
 
     const createOffer = useCallback(async () => {
         const pc = peerConnectionRef.current;
-        if (!pc || pc.signalingState !== 'stable') return;
+        if (!pc) return;
 
         try {
-            const offer = await pc.createOffer();
+            const offer = await pc.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
+            
             await pc.setLocalDescription(offer);
             signalingStateRef.current = 'have-local-offer';
 
-            await updateDoc(callDocRef, { 
+            await updateDoc(callDocRef, {
                 offer: { type: offer.type, sdp: offer.sdp },
                 offerCreatedAt: new Date().toISOString()
             });
@@ -109,19 +152,19 @@ const VideoCall = () => {
         }
     }, [callDocRef]);
 
-    const handleOffer = useCallback(async (offer, offerCreatedAt) => {
+    const handleOffer = useCallback(async (offer) => {
         const pc = peerConnectionRef.current;
-        if (!pc || pc.signalingState !== 'stable' || signalingStateRef.current !== 'new') return;
+        if (!pc || signalingStateRef.current !== 'new') return;
 
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(offer));
             signalingStateRef.current = 'have-remote-offer';
-            
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             signalingStateRef.current = 'have-local-answer';
 
-            await updateDoc(callDocRef, { 
+            await updateDoc(callDocRef, {
                 answer: { type: answer.type, sdp: answer.sdp },
                 answerCreatedAt: new Date().toISOString()
             });
@@ -130,9 +173,9 @@ const VideoCall = () => {
         }
     }, [callDocRef]);
 
-    const handleAnswer = useCallback(async (answer, answerCreatedAt) => {
+    const handleAnswer = useCallback(async (answer) => {
         const pc = peerConnectionRef.current;
-        if (!pc || pc.signalingState !== 'have-local-offer' || signalingStateRef.current !== 'have-local-offer') return;
+        if (!pc || signalingStateRef.current !== 'have-local-offer') return;
 
         try {
             await pc.setRemoteDescription(new RTCSessionDescription(answer));
@@ -144,10 +187,14 @@ const VideoCall = () => {
     }, []);
 
     const handleRemoteICECandidates = useCallback(async (candidates) => {
-        if (!peerConnectionRef.current || !candidates?.length) return;
+        const pc = peerConnectionRef.current;
+        if (!pc || !candidates?.length) return;
+
         for (const candidate of candidates) {
             try {
-                await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+                if (pc.remoteDescription) {
+                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                }
             } catch (error) {
                 console.warn('Failed to add ICE candidate:', error);
             }
@@ -176,48 +223,69 @@ const VideoCall = () => {
 
     const endCall = useCallback(async () => {
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((track) => track.stop());
+            localStreamRef.current.getTracks().forEach(track => track.stop());
         }
         if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
         }
 
-        await updateDoc(callDocRef, { status: 'ended', endedAt: new Date().toISOString() });
-        const userDocref = doc(db,"users",auth.currentUser.uid)
-        await updateDoc(userDocref, { status: 'online' });
+        try {
+            await updateDoc(callDocRef, { 
+                status: 'ended', 
+                endedAt: new Date().toISOString() 
+            });
+            
+            // Update user status
+            if (auth.currentUser) {
+                const userDocRef = doc(db, "users", auth.currentUser.uid);
+                await updateDoc(userDocRef, { status: 'online' });
+            }
+        } catch (error) {
+            console.error('Error ending call:', error);
+        }
+
         navigate('/');
     }, [callDocRef, navigate]);
 
     const cleanup = useCallback(() => {
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach((track) => track.stop());
+            localStreamRef.current.getTracks().forEach(track => track.stop());
         }
         if (peerConnectionRef.current) {
             peerConnectionRef.current.close();
         }
         setIsConnected(false);
+        setRemoteStream(null);
+        setAudioStream(null);
     }, []);
 
+    // Initial setup effect
     useEffect(() => {
-        const pc = initializePeerConnection();
-        setupLocalStream().then(() => {
-            if (isCaller) createOffer();
-        });
+        const setupCall = async () => {
+            const pc = initializePeerConnection();
+            await setupLocalStream();
+            if (isCaller) {
+                await createOffer();
+            }
+        };
+
+        setupCall();
         return cleanup;
     }, [initializePeerConnection, setupLocalStream, createOffer, cleanup, isCaller]);
 
+    // Signaling effect
     useEffect(() => {
         const unsubscribe = onSnapshot(callDocRef, async (snapshot) => {
             const data = snapshot.data();
             if (!data) return;
 
             try {
-                if (!isCaller && data.offer && peerConnectionRef.current && signalingStateRef.current === 'new') {
-                    await handleOffer(data.offer, data.offerCreatedAt);
+                if (!isCaller && data.offer && !data.answer) {
+                    await handleOffer(data.offer);
                 }
 
                 if (isCaller && data.answer && signalingStateRef.current === 'have-local-offer') {
-                    await handleAnswer(data.answer, data.answerCreatedAt);
+                    await handleAnswer(data.answer);
                 }
 
                 const candidates = isCaller ? data.calleeCandidates : data.callerCandidates;
@@ -227,35 +295,24 @@ const VideoCall = () => {
 
                 if (data.status === 'ended') {
                     cleanup();
-                    
                     try {
-                        // Get the call document data
                         const docSnapshot = await getDoc(callDocRef);
                         if (docSnapshot.exists()) {
                             const callData = docSnapshot.data();
-                            
-                            // Get the receiverId from the call document (assuming it's stored as receiverId or calleeId)
                             const receiverId = isCaller ? callData.receiverId : callData.callerId;
                             
-                            // Update the receiver's status to "online" in the users collection
                             if (receiverId) {
                                 const userRef = doc(db, "users", receiverId);
-                                await updateDoc(userRef, {
-                                    status: "online"
-                                });
+                                await updateDoc(userRef, { status: "online" });
                             }
                             
-                            // Now delete the call document from Firestore
                             await deleteDoc(callDocRef);
                         }
                     } catch (error) {
                         console.error("Error during cleanup:", error);
                     }
-                
-                    // Navigate back to the home page (or wherever you want)
                     navigate('/');
                 }
-                
             } catch (error) {
                 console.error('Error in Firestore snapshot listener:', error);
             }
@@ -267,11 +324,16 @@ const VideoCall = () => {
         };
     }, [callDocRef, isCaller, handleOffer, handleAnswer, handleRemoteICECandidates, cleanup, navigate]);
 
+    // Translation status effect
     useEffect(() => {
         const fetchTranslationStatus = async () => {
-            const docSnapshot = await getDoc(callDocRef);
-            if (docSnapshot.exists()) {
-                setIsTranslation(docSnapshot.data()?.translationEnabled || false);
+            try {
+                const docSnapshot = await getDoc(callDocRef);
+                if (docSnapshot.exists()) {
+                    setIsTranslation(docSnapshot.data()?.translationEnabled || false);
+                }
+            } catch (error) {
+                console.error('Error fetching translation status:', error);
             }
         };
 
@@ -287,9 +349,9 @@ const VideoCall = () => {
                         autoPlay
                         muted
                         playsInline
-                        className="rounded-lg w-96"
+                        className="rounded-lg w-full h-auto"
                     />
-                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                    <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
                         You
                     </p>
                 </div>
@@ -298,17 +360,17 @@ const VideoCall = () => {
                         ref={remoteVideoRef}
                         autoPlay
                         playsInline
-                        muted
-                        className="rounded-lg w-96"
+                        className="rounded-lg w-full h-auto"
                     />
-                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                        Remote User(TODO:add user name here)
+                    <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                        Remote User
                     </p>
                 </div>
             </div>
+
             {remoteStream && <RemoteStreamAudioEquilizer audioStream={audioStream} />}
 
-            <div className="flex gap-4 mt-4">
+            <div className="flex justify-center gap-4 mt-4">
                 <button
                     onClick={toggleAudio}
                     className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'} text-white`}
@@ -330,12 +392,15 @@ const VideoCall = () => {
             </div>
 
             {isTranslation ? (
-                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
+                <TranslationArea 
+                    callDocId={callDocId} 
+                    isCaller={isCaller} 
+                    remoteStream={remoteStream} 
+                    remoteAudioStream={audioStream} 
+                />
             ) : (
-                <p>No Translation</p>
+                <p className="text-center mt-4">Translation not enabled</p>
             )}
-
-            
         </div>
     );
 };
