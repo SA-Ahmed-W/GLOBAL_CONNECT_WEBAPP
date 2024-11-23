@@ -12,6 +12,7 @@ const FriendsList = () => {
   const navigate = useNavigate();
   const [incomingCall, setIncomingCall] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [XCallID,setCallID] = useState(null)
 
   useEffect(() => {
     const fetchFriends = () => {
@@ -62,20 +63,6 @@ const FriendsList = () => {
     checkAuth();
   }, [navigate]);
 
-  // useEffect(() => {
-  //   const callDocRef = doc(db, "calls", auth.currentUser.uid);
-  //   const unsubscribe = onSnapshot(callDocRef, (snapshot) => {
-  //     const callData = snapshot.data();
-  //     if (callData && callData.status === "incoming") {
-  //       setIncomingCall(callData);
-  //     } else {
-  //       setIncomingCall(null);
-  //     }
-  //   });
-
-  //   return () => unsubscribe();
-  // }, []);
-
   const listenForIncomingCalls = (userId) => {
     const callQuery = query(
       collection(db, 'calls'),
@@ -87,6 +74,7 @@ const FriendsList = () => {
       if (!snapshot.empty) {
         const callData = snapshot.docs[0].data();
         setIncomingCall({ id: snapshot.docs[0].id, ...callData });
+        setCallID(snapshot.docs[0].id)
         console.log("inccoming call")
       } else {
         setIncomingCall(null);
@@ -121,12 +109,14 @@ const FriendsList = () => {
       where('status', '==', 'accepted')
     );
 
-    onSnapshot(callQuery, (snapshot) => {
+    onSnapshot(callQuery, async(snapshot) => {
       if (!snapshot.empty) {
         const callData = snapshot.docs[0].data();
         const callId = snapshot.docs[0].id; // Extract the call ID from the snapshot
         if (callData?.status === "accepted") { 
           console.log("A call accepted");
+          const callDocRef = doc(db, 'calls', callId);
+          await updateDoc(callDocRef, { status: 'in call' });
           navigate('/video-call', { state: { callId, isCaller: true } });
           // navigate(`/before/call/${callId}`, { state: { callId, isCaller: true } });
         }

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { db } from '../config/firebase';
-import { doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
@@ -225,6 +225,7 @@ const VideoCall = () => {
 
                 if (data.status === 'ended') {
                     cleanup();
+                    await deleteDoc(callDocRef)
                     navigate('/');
                 }
             } catch (error) {
