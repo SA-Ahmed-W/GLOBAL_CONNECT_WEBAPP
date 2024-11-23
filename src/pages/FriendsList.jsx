@@ -117,6 +117,8 @@ const FriendsList = () => {
           console.log("A call accepted");
           const callDocRef = doc(db, 'calls', callId);
           await updateDoc(callDocRef, { status: 'in call' });
+          const userDocref = doc(db,"users",auth.currentUser.uid)
+          await updateDoc(userDocref, { status: 'in call' });
           navigate('/video-call', { state: { callId, isCaller: true } });
           // navigate(`/before/call/${callId}`, { state: { callId, isCaller: true } });
         }

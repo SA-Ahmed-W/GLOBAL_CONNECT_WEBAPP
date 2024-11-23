@@ -183,6 +183,8 @@ const VideoCall = () => {
         }
 
         await updateDoc(callDocRef, { status: 'ended', endedAt: new Date().toISOString() });
+        const userDocref = doc(db,"users",auth.currentUser.uid)
+        await updateDoc(userDocref, { status: 'online' });
         navigate('/');
     }, [callDocRef, navigate]);
 
@@ -225,9 +227,35 @@ const VideoCall = () => {
 
                 if (data.status === 'ended') {
                     cleanup();
-                    await deleteDoc(callDocRef);
+                    
+                    try {
+                        // Get the call document data
+                        const docSnapshot = await getDoc(callDocRef);
+                        if (docSnapshot.exists()) {
+                            const callData = docSnapshot.data();
+                            
+                            // Get the receiverId from the call document (assuming it's stored as receiverId or calleeId)
+                            const receiverId = isCaller ? callData.receiverId : callData.callerId;
+                            
+                            // Update the receiver's status to "online" in the users collection
+                            if (receiverId) {
+                                const userRef = doc(db, "users", receiverId);
+                                await updateDoc(userRef, {
+                                    status: "online"
+                                });
+                            }
+                            
+                            // Now delete the call document from Firestore
+                            await deleteDoc(callDocRef);
+                        }
+                    } catch (error) {
+                        console.error("Error during cleanup:", error);
+                    }
+                
+                    // Navigate back to the home page (or wherever you want)
                     navigate('/');
                 }
+                
             } catch (error) {
                 console.error('Error in Firestore snapshot listener:', error);
             }
