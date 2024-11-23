@@ -281,7 +281,7 @@ const VideoCall = () => {
     return (
         <div className="flex flex-col min-h-screen bg-gray-100 p-4">
             <div className="grid grid-cols-2 gap-4 mb-4 w-full max-w-3xl mx-auto">
-                <div className="flex justify-center">
+                <div className="relative">
                     <video
                         ref={localVideoRef}
                         autoPlay
@@ -289,36 +289,53 @@ const VideoCall = () => {
                         playsInline
                         className="rounded-lg w-96"
                     />
+                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                        You
+                    </p>
                 </div>
-                <div className="flex justify-center">
+                <div className="relative">
                     <video
                         ref={remoteVideoRef}
                         autoPlay
                         playsInline
+                        muted
                         className="rounded-lg w-96"
                     />
+                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
+                        Remote User(TODO:add user name here)
+                    </p>
                 </div>
             </div>
+            {remoteStream && <RemoteStreamAudioEquilizer audioStream={audioStream} />}
 
-            <div className="flex justify-center space-x-4">
-                <button onClick={toggleAudio} className="btn">
+            <div className="flex gap-4 mt-4">
+                <button
+                    onClick={toggleAudio}
+                    className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'} text-white`}
+                >
                     {isMuted ? 'Unmute' : 'Mute'}
                 </button>
-                <button onClick={toggleVideo} className="btn">
+                <button
+                    onClick={toggleVideo}
+                    className={`px-4 py-2 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'} text-white`}
+                >
                     {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
                 </button>
-                <button onClick={endCall} className="btn">
+                <button
+                    onClick={endCall}
+                    className="px-4 py-2 rounded-full bg-red-500 text-white"
+                >
                     End Call
                 </button>
             </div>
 
-            {isTranslation && (
-                <div className="mt-4">
-                    <TranslationArea audioStream={audioStream} />
-                </div>
+            {isTranslation ? (
+                <TranslationArea callDocId={callDocId} isCaller={isCaller} remoteStream={remoteStream} remoteAudioStream={audioStream} />
+            ) : (
+                <p>No Translation</p>
             )}
 
-            {remoteStream && <RemoteStreamAudioEquilizer audioStream={audioStream} />}
+            
         </div>
     );
 };
