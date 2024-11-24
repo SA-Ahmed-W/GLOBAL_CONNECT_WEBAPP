@@ -35,8 +35,6 @@ const App = () => {
   return (
     <Router>
       <div className="min-h-screen bg-gray-100">
-        {/* Conditionally render Navbar if user is logged in */}
-        {/* {user && <Navbar />} */}
         <Navbar />
 
         <Routes>
