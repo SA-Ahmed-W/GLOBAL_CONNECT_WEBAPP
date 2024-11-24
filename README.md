@@ -80,6 +80,9 @@ Welcome to the installation guide for **GlobalConnect**, a video calling app wit
 1. **Clone the Repository**:
    ```bash
    git clone https://github.com/SAASIMAHMEDW/GLOBAL_CONNECT_WEBAPP.git
+   ```
+1.1. **Go to the project directory**:
+   ```bash
    cd GLOBAL_CONNECT_WEBAPP
    ```
 
@@ -90,10 +93,7 @@ Welcome to the installation guide for **GlobalConnect**, a video calling app wit
 
 3. **Configure Environment Variables**:
    - Create a `.env` file in the root directory.
-   - Add the following variables:
-     ```env
-     VITE_RAPID_API_KEY=your-rapid-api-key
-     ```
+   - Consider .example.env for setting up the environment variables
 
 4. **Start Development Server**:
    ```bash
@@ -114,19 +114,7 @@ Welcome to the installation guide for **GlobalConnect**, a video calling app wit
 3. Enable **Firestore Database**:
    - Go to the **Firestore Database** tab.
    - Click **Create Database** and select the desired security rules (e.g., test mode during development).
-4. Copy your Firebase configuration to `firebase-config.js`:
-   ```javascript
-   // src/config/firebase.js
-   export const firebaseConfig = {
-       apiKey: "your-api-key",
-       authDomain: "your-auth-domain",
-       projectId: "your-project-id",
-       storageBucket: "your-storage-bucket",
-       messagingSenderId: "your-messaging-sender-id",
-       appId: "your-app-id"
-   };
-   ```
-
+4. Copy your Firebase configuration to `.env`:
 ---
 
 ## Environment Variables
@@ -153,8 +141,6 @@ Refer to the `.example.env` file for guidance.
 - **Firebase Errors**  
   Ensure your Firebase project credentials are correct and the required APIs are enabled.
 
-<!-- For other issues, refer to [GitHub Issues](https://github.com/SAASIMAHMEDW/GLOBAL_CONNECT_WEBAPP/issues). -->
-
 ---
 
 ## Future Enhancements
@@ -166,16 +152,7 @@ Refer to the `.example.env` file for guidance.
 
 ---
 
-<!-- ## Contributing
 
-Contributions are welcome! Please follow these steps to contribute:
-1. Fork the repository.
-2. Create a feature branch (`git checkout -b feature-branch-name`).
-3. Commit your changes (`git commit -m "Add feature description"`).
-4. Push to your branch (`git push origin feature-branch-name`).
-5. Open a pull request on GitHub.
-
-For any queries, feel free to reach out in the [Issues](https://github.com/SAASIMAHMEDW/GLOBAL_CONNECT_WEBAPP/issues) section. -->
 
 
 ## Acknowledgements
