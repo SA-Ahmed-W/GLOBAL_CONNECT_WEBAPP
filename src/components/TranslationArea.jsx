@@ -99,37 +99,39 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
   }, [remoteStream, inputLangCode]);
 
   // Translation function
-  const translate = useCallback(
-    async (text) => {
-      const options = {
-        method: "POST",
-        url: "https://google-translate-api9.p.rapidapi.com/translate/mini",
-        headers: {
-          "x-rapidapi-key": import.meta.env.VITE_RAPID_API_KEY,
-          "x-rapidapi-host": import.meta.env.VITE_RAPID_API_HOST,
-          "Content-Type": "application/json",
-        },
-        data: {
-          input: text,
-          inputLanguage: inputLangCode,
-          outputLanguage: outputLangCode,
-        },
-      };
-      try {
-        const response = await axios.request(options);
-        const translatedText = response.data.output;
+// Translation function
+const translate = useCallback(
+  async (text) => {
+    const options = {
+      method: "POST",
+      url: "https://free-google-translate1.p.rapidapi.com/api/v1/translations", // New RapidAPI host
+      headers: {
+        "x-rapidapi-key": import.meta.env.VITE_RAPID_API_KEY, // Assuming this remains unchanged
+        "x-rapidapi-host": import.meta.env.VITE_RAPID_API_HOST, // New API host
+        "Content-Type": "application/json",
+      },
+      params: {
+        query: text,
+        from: inputLangCode,
+        to: outputLangCode,
+      },
+    };
+    try {
+      const response = await axios.request(options);
+      const translatedText = response.data.translation; // Ensure 'output' aligns with new API's response structure
 
-        // Add new translation to the list
-        setTranslations((prev) => [
-          { text: translatedText, isLatest: true },
-          ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
-        ]);
-      } catch (error) {
-        console.error("Translation API error:", error);
-      }
-    },
-    [inputLangCode, outputLangCode]
-  );
+      // Add new translation to the list
+      setTranslations((prev) => [
+        { text: translatedText, isLatest: true },
+        ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
+      ]);
+    } catch (error) {
+      console.error("Translation API error:", error);
+    }
+  },
+  [inputLangCode, outputLangCode]
+);
+
 
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
