@@ -359,6 +359,7 @@ const VideoCall = () => {
                     <video
                         ref={remoteVideoRef}
                         autoPlay
+                        muted
                         playsInline
                         className="rounded-lg w-full h-auto"
                     />
