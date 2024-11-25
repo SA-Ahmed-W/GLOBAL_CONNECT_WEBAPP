@@ -104,7 +104,7 @@ const translate = useCallback(
   async (text) => {
     const options = {
       method: "POST",
-      url: "https://free-google-translate1.p.rapidapi.com/api/v1/translations", // New RapidAPI host
+      url: "https://free-google-translator.p.rapidapi.com/external-api/free-google-translator", // New RapidAPI host
       headers: {
         "x-rapidapi-key": import.meta.env.VITE_RAPID_API_KEY, // Assuming this remains unchanged
         "x-rapidapi-host": import.meta.env.VITE_RAPID_API_HOST, // New API host
