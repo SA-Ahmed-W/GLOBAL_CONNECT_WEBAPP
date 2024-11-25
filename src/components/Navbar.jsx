@@ -50,6 +50,7 @@ const Navbar = () => {
         <div className="flex items-center space-x-4">
           <NavLink to="/" className="text-white hidden md:inline">Friends</NavLink>
           <NavLink to="/add-friend" className="text-white hidden md:inline">Add Friend</NavLink>
+          <NavLink to="/friends-request" className="text-white hidden md:inline">Friend Request</NavLink>
           <NavLink to="/remove-friend" className="text-white hidden md:inline">Remove Friend</NavLink>
 
           <div className="relative" ref={dropdownRef}>
@@ -79,6 +80,13 @@ const Navbar = () => {
                   onClick={() => setDropdownOpen(false)}
                 >
                   Add Friend
+                </Link>
+                <Link
+                  to="/friends-request"
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  onClick={() => setDropdownOpen(false)}
+                >
+                  Friend Request
                 </Link>
                 <Link
                   to="/remove-friend"

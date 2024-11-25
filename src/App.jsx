@@ -6,6 +6,7 @@ import { auth } from "./config/firebase";
 import Navbar from "./components/Navbar";
 import FriendsList from "./pages/FriendsList";
 import AddFriend from "./pages/AddFriend";
+import FriendRequests from "./pages/FriendRequests";
 import RemoveFriend from "./pages/RemoveFriend";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
@@ -45,6 +46,7 @@ const App = () => {
           {/* Protected Routes */}
           <Route path="/" element={user ? <FriendsList /> : <Navigate to="/login" />} />
           <Route path="/add-friend" element={user ? <AddFriend /> : <Navigate to="/login" />} />
+          <Route path="/friends-request" element={user ? <FriendRequests /> : <Navigate to="/login" />} />
           <Route path="/remove-friend" element={user ? <RemoveFriend /> : <Navigate to="/login" />} />
           <Route path="/before/call/:callid" element={user ? <BeforeCall /> : <Navigate to="/login" />} />
           <Route path="/call/session/:friendId" element={user ? <CallSession /> : <Navigate to="/login" />} />
