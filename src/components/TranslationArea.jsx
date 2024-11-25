@@ -64,48 +64,39 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
 
   // Speech Recognition Setup
   useEffect(() => {
-    if (!remoteStream || !SpeechRecognition) return;
-  
+    if (!remoteStream) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = inputLangCode || "en"; // Default to English if not set
+    recognition.continuous = true;
+
+    // Extract audio tracks from the remote stream
     const audioTracks = remoteStream.getAudioTracks();
     if (audioTracks.length > 0) {
-      const mediaRecorder = new MediaRecorder(new MediaStream(audioTracks));
-      const recognition = new SpeechRecognition();
-      recognition.lang = inputLangCode || "en";
-      recognition.continuous = true;
-  
-      // Process recorded chunks
-      mediaRecorder.ondataavailable = (event) => {
-        const audioBlob = event.data;
-        const reader = new FileReader();
-        reader.onload = () => {
-          const arrayBuffer = reader.result;
-  
-          // Create Blob URL and pass it to SpeechRecognition
-          const audioURL = URL.createObjectURL(new Blob([arrayBuffer]));
-          const audio = new Audio(audioURL);
-          audio.play();
-          recognition.start();
-        };
-        reader.readAsArrayBuffer(audioBlob);
-      };
-  
-      mediaRecorder.start();
-  
+      const audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(new MediaStream(audioTracks));
+      const destination = audioContext.createMediaStreamDestination();
+
+      // Connect audio stream to SpeechRecognition
+      source.connect(destination);
+
+      // Start SpeechRecognition
       recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript;
-        translate(transcript); // Translate extracted text
+
+        // Translate the latest transcript
+        translate(transcript);
       };
-  
-      recognition.onerror = (event) =>
-        console.error("Speech recognition error:", event.error);
-  
+
+      recognition.onerror = (event) => console.error("Speech recognition error:", event.error);
+      recognition.start();
+
       return () => {
-        mediaRecorder.stop();
         recognition.stop();
+        audioContext.close();
       };
     }
   }, [remoteStream, inputLangCode]);
-  
 
   // Translation function
 // Translation function
