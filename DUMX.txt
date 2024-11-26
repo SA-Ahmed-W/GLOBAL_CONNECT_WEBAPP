@@ -1,1 +1,1 @@
-https://globalconnect-aasimahmeds-projects.vercel.app/login
+https://global-connect-webapp.vercel.app/login
