@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { db } from "../config/firebase";
 import { doc, getDoc } from "firebase/firestore";
+import {translate as Translate} from 'google-translate-api-x';
 
 // Speech Recognition API setup
 const SpeechRecognition =
@@ -99,8 +100,25 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
   }, [remoteStream, inputLangCode]);
 
   // Translation function
+  const translate = useCallback(
+    async (text) => {
+      try {
+        const response = await Translate(text,{from : inputLangCode,to: outputLang,autoCorrect: true})
+        const translatedText = response.text; // Ensure 'output' aligns with new API's response structure
+  
+        // Add new translation to the list
+        setTranslations((prev) => [
+          { text: translatedText, isLatest: true },
+          ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
+        ]);
+      } catch (error) {
+        console.error("Translation API error:", error);
+      }
+    },
+    [inputLangCode, outputLangCode]
+  );
 // Translation function
-const translate = useCallback(
+const translatex = useCallback(
   async (text) => {
     const options = {
       method: "POST",
