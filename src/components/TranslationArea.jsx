@@ -99,12 +99,21 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
     }
   }, [remoteStream, inputLangCode]);
 
-  // Translation function
   const translate = useCallback(
     async (text) => {
       try {
-        const response = await Translate(text,{from : inputLangCode,to: outputLang,autoCorrect: true})
-        const translatedText = response.text; // Ensure 'output' aligns with new API's response structure
+        // Use a proxy URL to bypass CORS if needed
+        const proxyUrl = "https://cors-anywhere.herokuapp.com/";
+        const response = await Translate(text, {
+          from: inputLangCode,
+          to: outputLang,
+          autoCorrect: true,
+          requestOptions: {
+            agent: proxyUrl, // Add proxy settings here if required
+          },
+        });
+  
+        const translatedText = response.text; // Ensure response format matches your needs
   
         // Add new translation to the list
         setTranslations((prev) => [
@@ -112,10 +121,10 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
           ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
         ]);
       } catch (error) {
-        console.error("Translation API error:", error);
+        console.error("Translation API error:", error.message || error);
       }
     },
-    [inputLangCode, outputLangCode]
+    [inputLangCode, outputLang]
   );
 
 
