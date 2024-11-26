@@ -41,7 +41,7 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-blue-600 p-4 flex justify-between items-center fixed top-0">
+    <nav className="bg-blue-600 p-4 flex justify-between items-center fixed">
       <div className="text-white text-lg font-semibold">
         <Link to="/">GlobalConnect</Link>
       </div>
