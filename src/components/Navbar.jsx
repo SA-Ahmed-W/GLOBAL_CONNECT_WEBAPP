@@ -41,9 +41,11 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="bg-blue-600 p-4 flex justify-between items-center">
+    <nav className="bg-blue-600 p-4 flex justify-between items-center rounded-3x">
       <div className="text-white text-lg font-semibold">
-        <Link to="/">GlobalConnect</Link>
+        <div className="rounded-xl flex items-center">
+        <Link to="/" className="">GlobalConnect</Link>
+        </div>
       </div>
 
       {user ? (
@@ -67,34 +69,34 @@ const Navbar = () => {
                   <p className="text-xs text-gray-500 mb-2">{user.email}</p>
                   <p className="text-xs text-gray-400 break-words">{user.uid}</p>
                 </div>
-                <Link
+                <NavLink
                   to="/"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={() => setDropdownOpen(false)}
                 >
                   Friends
-                </Link>
-                <Link
+                </NavLink>
+                <NavLink
                   to="/add-friend"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={() => setDropdownOpen(false)}
                 >
                   Add Friend
-                </Link>
-                <Link
+                </NavLink>
+                <NavLink
                   to="/friends-request"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={() => setDropdownOpen(false)}
                 >
                   Friend Request
-                </Link>
-                <Link
+                </NavLink>
+                <NavLink
                   to="/remove-friend"
                   className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                   onClick={() => setDropdownOpen(false)}
                 >
                   Remove Friend
-                </Link>
+                </NavLink>
                 {/* <div className="border-b"> */}
                 <button
                   onClick={handleLogout}

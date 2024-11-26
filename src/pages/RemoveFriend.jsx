@@ -1,4 +1,3 @@
-// src/pages/RemoveFriend.jsx
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../config/firebase";
 import { collection, doc, deleteDoc, onSnapshot } from "firebase/firestore";
@@ -34,7 +33,7 @@ const RemoveFriend = () => {
       await deleteDoc(friendRef);
       await deleteDoc(userRef);
 
-      toast.success(`Removed ${friend.name} from friends.`);
+      toast.error(`Removed ${friend.name} from friends.`);
       setFriends((prev) => prev.filter((user) => user.id !== friend.id));
     } catch (error) {
       console.error("Error removing friend:", error);
@@ -46,31 +45,36 @@ const RemoveFriend = () => {
     <div className="p-4 space-y-4">
       <h2 className="text-2xl font-bold">Remove Friend</h2>
       {friends.length === 0 ? (
-        <p className="text-gray-500">No friends to remove.</p>
+        <p className="text-gray-500 text-center">No friends to remove.</p>
       ) : (
-        <div className="space-y-4">
+        <div className="grid gap-1 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {friends.map((friend) => (
             <div
               key={friend.id}
-              className="flex items-center justify-between p-4 bg-white rounded shadow-lg"
+              className="flex flex-col bg-white border shadow-sm rounded-lg max-w-xs"
             >
-              <div className="flex items-center space-x-4">
-                <img
-                  src={friend.profilePic || "/default-avatar.png"}
-                  alt="Profile"
-                  className="w-12 h-12 rounded-full"
-                />
-                <div>
-                  <h3 className="text-lg font-semibold">{friend.name}</h3>
-                  <p className="text-sm text-gray-600">{friend.email}</p>
+              {/* Profile Picture */}
+              <img
+                className="w-full h-40 object-cover rounded-t-lg"
+                src={friend.profilePic || "/default-avatar.png"}
+                alt={friend.name}
+              />
+
+              {/* Friend Details */}
+              <div className="p-4">
+                <h3 className="text-lg font-semibold text-black text-center">{friend.name}</h3>
+                <p className="mt-1 text-sm text-gray-500 dark:text-neutral-400 text-center">{friend.email}</p>
+
+                {/* Action Buttons */}
+                <div className="mt-4 flex justify-center">
+                  <button
+                    onClick={() => handleRemoveFriend(friend)}
+                    className="py-2 px-4 text-sm font-medium rounded-md border border-transparent bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:bg-red-700"
+                  >
+                    Remove
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => handleRemoveFriend(friend)}
-                className="px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700"
-              >
-                Remove
-              </button>
             </div>
           ))}
         </div>

@@ -9,11 +9,14 @@ const Register = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleRegister = async (e) => {
+  const handleRegister = (e) => {
     e.preventDefault();
-    try {
+    setLoading(true); // Disable the button
+
+    const registerPromise = async () => {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
@@ -32,11 +35,20 @@ const Register = () => {
         status: "online",
       });
 
-      toast.success("Registration successful! Please log in.");
-      navigate("/login");
-    } catch (error) {
-      toast.error("Registration failed. Please try again.");
-    }
+      navigate("/login"); // Redirect to login on success
+    };
+
+    toast.promise(registerPromise(), {
+      pending: "Registering your account...",
+      success: "Registration successful! 👌",
+      error: "Registration failed. Please try again 🤯",
+    })
+      .catch(() => {
+        setLoading(false); // Re-enable the button on failure
+      })
+      .finally(() => {
+        setLoading(false); // Ensure button is re-enabled
+      });
   };
 
   return (
@@ -68,8 +80,12 @@ const Register = () => {
             onChange={(e) => setPassword(e.target.value)}
             required
           />
-          <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded">
-            Register
+          <button
+            type="submit"
+            disabled={loading}
+            className={`w-full py-2 rounded text-white ${loading ? "bg-gray-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+          >
+            {loading ? "Registering..." : "Register"}
           </button>
         </form>
         <p className="text-center text-gray-600">

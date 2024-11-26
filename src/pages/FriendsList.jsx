@@ -173,6 +173,7 @@ const FriendsList = () => {
 
       {incomingCall && (
         <IncomingCallModal
+          callID = {XCallID}
           callerId={incomingCall.callerId}
           onAccept={() => handleAcceptCall(incomingCall.id)}
           onReject={() => handleRejectCall(incomingCall.id)} />

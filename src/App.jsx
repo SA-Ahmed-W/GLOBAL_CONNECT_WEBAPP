@@ -14,6 +14,8 @@ import BeforeCall from "./components/BeforeCall"
 import CallSession from "./pages/CallSession"
 import VideoCall from "./pages/VideoCall"
 import Loader from "./components/Loader"
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 const App = () => {
   const [user, setUser] = useState(null);
@@ -55,6 +57,7 @@ const App = () => {
 
         </Routes>
       </div>
+      <ToastContainer />
     </Router>
   );
 };

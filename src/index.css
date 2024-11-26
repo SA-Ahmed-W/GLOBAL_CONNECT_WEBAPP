@@ -3,6 +3,17 @@
 @tailwind utilities;
 
 
+
+
+.active{
+  color: aliceblue;
+  background-color: rgb(255, 255, 255);
+  color: black;
+  border-radius: 10px;
+  padding: 10px 10px;
+  filter: drop-shadow(0 10px 8px rgba(29, 29, 29, 0.053)) drop-shadow(0 4px 3px rgb(0 0 0 / 0.1));
+}
+
 /* Add in index.css or a specific CSS file */
 @media (max-width: 768px) {
     .md\:inline {

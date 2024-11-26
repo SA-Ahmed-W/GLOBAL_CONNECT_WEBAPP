@@ -3,9 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { doc, updateDoc, onSnapshot, getDoc } from "firebase/firestore";
 import { db, auth } from "../config/firebase";
 
-const IncomingCallModal = ({ callerId, onAccept, onReject }) => {
+const IncomingCallModal = ({ callID, callerId, onAccept, onReject }) => {
 
   const [callerData, setCallerData] = useState({})
+  const [callData,setCallData] = useState()
 
   // console.log(callData);
   const navigate = useNavigate();
@@ -19,7 +20,17 @@ const IncomingCallModal = ({ callerId, onAccept, onReject }) => {
 
       }
     }
+    const geCalltData = async () => {
+      let data = await getDoc(doc(db, "calls", callID))
+      if (data.exists()) {
+        // console.log(data.data());
+        setCallData(data.data())
+
+      }
+    }
+
     getData()
+    geCalltData()
 
 
   }, []);
@@ -63,12 +74,19 @@ const IncomingCallModal = ({ callerId, onAccept, onReject }) => {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
       <div className="bg-white p-6 rounded shadow-lg max-w-md space-y-4">
-        <h2 className="text-xl font-bold">Incoming Call</h2>
+        <h2 className="text-xl font-bold">Incoming Call {callData?.translationEnabled ? "(TRANSLATION)": ""}</h2>
         <div className="flex items-center space-x-4">
           <img src={callerData.profilePic || "/default-avatar.png"} alt="Profile" className="w-12 h-12 rounded-full" />
           <div>
             <h3 className="text-lg font-semibold">{callerData.name}</h3>
             <p className="text-sm text-gray-600">{callerData.email}</p>
+            <hr />
+           {
+            callData?.translationEnabled ? <>
+             <h3 className="text-lg font-semibold">Language</h3>
+            <p className="text-sm text-gray-600">{callData?.inputLanguage}</p>
+            <p className="text-sm text-gray-600">{callData?.outputLanguage}</p></> : ""
+           }
           </div>
         </div>
         <div className="flex space-x-4">

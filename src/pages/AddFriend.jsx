@@ -81,7 +81,7 @@ const AddFriend = () => {
       await deleteDoc(friendRef);
       await deleteDoc(userRef);
 
-      toast.success(`${friend.name} removed from friends.`);
+      toast.error(`${friend.name} removed from friends.`);
       setFriends((prev) => prev.filter((id) => id !== friend.id)); // Update friends list locally
     } catch (error) {
       console.error("Error removing friend:", error);
