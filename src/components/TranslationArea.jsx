@@ -117,38 +117,6 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
     },
     [inputLangCode, outputLangCode]
   );
-// Translation function
-const translatex = useCallback(
-  async (text) => {
-    const options = {
-      method: "POST",
-      url: "https://free-google-translator.p.rapidapi.com/external-api/free-google-translator", // New RapidAPI host
-      headers: {
-        "x-rapidapi-key": import.meta.env.VITE_RAPID_API_KEY, // Assuming this remains unchanged
-        "x-rapidapi-host": import.meta.env.VITE_RAPID_API_HOST, // New API host
-        "Content-Type": "application/json",
-      },
-      params: {
-        query: text,
-        from: inputLangCode,
-        to: outputLangCode,
-      },
-    };
-    try {
-      const response = await axios.request(options);
-      const translatedText = response.data.translation; // Ensure 'output' aligns with new API's response structure
-
-      // Add new translation to the list
-      setTranslations((prev) => [
-        { text: translatedText, isLatest: true },
-        ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
-      ]);
-    } catch (error) {
-      console.error("Translation API error:", error);
-    }
-  },
-  [inputLangCode, outputLangCode]
-);
 
 
   return (
