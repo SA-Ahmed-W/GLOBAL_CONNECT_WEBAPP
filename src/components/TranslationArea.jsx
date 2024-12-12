@@ -103,17 +103,19 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
     async (text) => {
       try {
         // Use a proxy URL to bypass CORS if needed
-        const proxyUrl = "https://cors-anywhere.herokuapp.com/";
-        const response = await Translate(text, {
-          from: inputLangCode,
-          to: outputLang,
-          autoCorrect: true,
-          requestOptions: {
-            agent: proxyUrl, // Add proxy settings here if required
-          },
-        });
+        const apiUrl = "https://gc-translate.onrender.com/api/v1/translate";
+        const responseAxios = await axios.post(apiUrl,{
+          text: text,
+          input_language_code: inputLangCode,
+          output_language_code: outputLangCode
+      },{
+        headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_GC_API_TRANSLATE_SECRET_KEY}`,
+            'Content-Type': 'application/json'
+        }
+    })
   
-        const translatedText = response.text; // Ensure response format matches your needs
+        const translatedText = responseAxios.data.translated_text; // Ensure response format matches your needs
   
         // Add new translation to the list
         setTranslations((prev) => [
