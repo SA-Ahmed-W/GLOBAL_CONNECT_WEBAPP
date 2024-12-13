@@ -2,7 +2,6 @@ import React, { useEffect, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import { db } from "../config/firebase";
 import { doc, getDoc } from "firebase/firestore";
-import {translate as Translate} from 'google-translate-api-x';
 
 // Speech Recognition API setup
 const SpeechRecognition =
