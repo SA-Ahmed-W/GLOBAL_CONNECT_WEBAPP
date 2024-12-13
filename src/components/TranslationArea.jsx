@@ -100,6 +100,7 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
 
   const translate = useCallback(
     async (text) => {
+      // console.log(text)
       try {
         // Use a proxy URL to bypass CORS if needed
         const apiUrl = "https://gc-translate.onrender.com/api/v1/translate";
