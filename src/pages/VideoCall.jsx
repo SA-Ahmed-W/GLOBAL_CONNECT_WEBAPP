@@ -2,10 +2,9 @@ import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { db } from '../config/firebase';
 import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
-import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
 import LocalTranslationAndSend from '../components/LocalTranslationAndSend';
-import RemoteReceiveAndDisplay from "../components/RemoteReceiveAndDisplay"
+import RemoteReceiveAndDisplay from "../components/RemoteReceiveAndDisplay";
 
 const VideoCall = () => {
     const location = useLocation();
@@ -44,7 +43,6 @@ const VideoCall = () => {
     const initializePeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(servers);
 
-        // Setup tracks before creating offer/answer
         setupTransceivers(pc);
 
         // Create a DataChannel
@@ -55,19 +53,15 @@ const VideoCall = () => {
         dataChannel.onclose = () => console.log("DataChannel is closed");
 
         pc.ontrack = (event) => {
-            console.log('ontrack event:', event);
             if (event.streams && event.streams[0]) {
-                console.log('Setting remote stream');
                 setRemoteStream(event.streams[0]);
 
-                // Extract audio tracks
                 const audioTracks = event.streams[0].getAudioTracks();
                 if (audioTracks.length > 0) {
                     const audioOnlyStream = new MediaStream(audioTracks);
                     setAudioStream(audioOnlyStream);
                 }
 
-                // Ensure remote video is set
                 if (remoteVideoRef.current) {
                     remoteVideoRef.current.srcObject = event.streams[0];
                 }
@@ -81,14 +75,9 @@ const VideoCall = () => {
         };
 
         pc.oniceconnectionstatechange = () => {
-            console.log('ICE Connection State:', pc.iceConnectionState);
             if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
                 setIsConnected(true);
             }
-        };
-
-        pc.onconnectionstatechange = () => {
-            console.log('Connection State:', pc.connectionState);
         };
 
         peerConnectionRef.current = pc;
@@ -124,10 +113,8 @@ const VideoCall = () => {
 
             localStreamRef.current = stream;
 
-            // Ensure peer connection exists before adding tracks
             if (peerConnectionRef.current) {
                 stream.getTracks().forEach(track => {
-                    console.log('Adding track to peer connection:', track.kind);
                     peerConnectionRef.current.addTrack(track, stream);
                 });
             }
@@ -243,12 +230,6 @@ const VideoCall = () => {
                 status: 'ended',
                 endedAt: new Date().toISOString()
             });
-
-            // Update user status
-            if (auth.currentUser) {
-                const userDocRef = doc(db, "users", auth.currentUser.uid);
-                await updateDoc(userDocRef, { status: 'online' });
-            }
         } catch (error) {
             console.error('Error ending call:', error);
         }
@@ -368,61 +349,37 @@ const VideoCall = () => {
                     <video
                         ref={remoteVideoRef}
                         autoPlay
-                        muted
                         playsInline
                         className="rounded-lg w-full h-auto"
                     />
                     <p className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded">
-                        Remote User
+                        Remote
                     </p>
                 </div>
             </div>
 
-            {remoteStream && <RemoteStreamAudioEquilizer audioStream={audioStream} />}
-
-            <div className="flex justify-center gap-4 mt-4">
-                <button
-                    onClick={toggleAudio}
-                    className={`px-4 py-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-blue-500'} text-white`}
-                >
+            <div className="flex justify-center gap-4 mb-4">
+                <button onClick={toggleAudio} className="bg-blue-500 text-white px-4 py-2 rounded-full">
                     {isMuted ? 'Unmute' : 'Mute'}
                 </button>
-                <button
-                    onClick={toggleVideo}
-                    className={`px-4 py-2 rounded-full ${isVideoOff ? 'bg-red-500' : 'bg-blue-500'} text-white`}
-                >
+                <button onClick={toggleVideo} className="bg-blue-500 text-white px-4 py-2 rounded-full">
                     {isVideoOff ? 'Turn Video On' : 'Turn Video Off'}
                 </button>
-                <button
-                    onClick={endCall}
-                    className="px-4 py-2 rounded-full bg-red-500 text-white"
-                >
+                <button onClick={endCall} className="bg-red-500 text-white px-4 py-2 rounded-full">
                     End Call
                 </button>
             </div>
 
-            {isTranslation ?
-                (
-                    <>
-                    <LocalTranslationAndSend
-                        peerConnection={peerConnectionRef.current}
-                        callDocId={callDocId}
-                        isCaller={isCaller}
-                    />
+            {isTranslation && (
+                <div className="bg-gray-800 text-white p-4 rounded-lg">
+                    <LocalTranslationAndSend peerConnection={peerConnectionRef.current} callDocId={callDocId} isCaller={isCaller} />
                     <RemoteReceiveAndDisplay peerConnection={peerConnectionRef.current} />
-                    </>
-                )
-                // (
-                //     <TranslationArea
-                //         callDocId={callDocId}
-                //         isCaller={isCaller}
-                //         remoteStream={remoteStream}
-                //         remoteAudioStream={audioStream}
-                //     />
-                // ) 
-                : (
-                    <p className="text-center mt-4">Translation not enabled</p>
-                )}
+                </div>
+            )}
+
+            <div>
+                <RemoteStreamAudioEquilizer audioStream={audioStream} />
+            </div>
         </div>
     );
 };
