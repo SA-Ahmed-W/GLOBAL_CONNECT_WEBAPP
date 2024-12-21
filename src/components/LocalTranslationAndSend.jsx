@@ -62,18 +62,18 @@ function LocalTranslationAndSend({ callDocId,isCaller, peerConnection }) {
   const translateText = useCallback(async (text) => {
     try {
       const apiUrl = "https://gc-translate.onrender.com/api/v1/translate";
-      const response = await axios.post(apiUrl, {
-        text,
-        input_language_code: inputLangCode,
-        output_language_code: outputLangCode,
-      }, {
+        const responseAxios = await axios.post(apiUrl,{
+          text: text,
+          input_language_code: inputLangCode,
+          output_language_code: outputLangCode
+      },{
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_GC_API_TRANSLATE_SECRET_KEY}`,
-          'Content-Type': 'application/json'
+            'Authorization': `Bearer ${import.meta.env.VITE_GC_API_TRANSLATE_SECRET_KEY}`,
+            'Content-Type': 'application/json'
         }
-      });
-
-      const translatedText = response.data.translated_text;
+    })
+  
+        const translatedText = responseAxios.data.translated_text;
       setTranslations((prev) => [...prev, translatedText]);
 
       // Send translated text to the remote peer via WebRTC DataChannel
@@ -106,6 +106,8 @@ function LocalTranslationAndSend({ callDocId,isCaller, peerConnection }) {
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
       <h1 className="text-xl font-bold mb-4">Local Translation and Sending</h1>
+      <p>Input: {inputLang}</p>
+      <p>Output: {outputLang}</p>
       <div className="mt-4">
         {translations.map((t, index) => (
           <p key={index} className="text-gray-700">{t}</p>
