@@ -405,11 +405,11 @@ const VideoCall = () => {
                 (
                     <>
                     <LocalTranslationAndSend
-                        peerConnection={pc}
+                        peerConnection={peerConnectionRef.current}
                         callDocId={callDocId}
                         isCaller={isCaller}
                     />
-                    <RemoteReceiveAndDisplay peerConnection={pc} />
+                    <RemoteReceiveAndDisplay peerConnection={peerConnectionRef.current} />
                     </>
                 )
                 // (
