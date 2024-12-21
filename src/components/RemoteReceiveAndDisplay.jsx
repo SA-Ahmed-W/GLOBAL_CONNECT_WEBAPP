@@ -9,8 +9,13 @@ function RemoteReceiveAndDisplay({ peerConnection }) {
     const dataChannel = peerConnection.dataChannel;
 
     dataChannel.onmessage = (event) => {
+      console.log("new messgae");
       const receivedText = event.data;
-      setReceivedTexts((prev) => [...prev, receivedText]);
+       // Add new translation to the list
+       setReceivedTexts((prev) => [
+        { text: receivedText, isLatest: true },
+        ...prev.map((t) => ({ ...t, isLatest: false })), // Mark previous texts as not latest
+      ]);
     };
 
     dataChannel.onerror = (error) => console.error("DataChannel error:", error);
@@ -19,11 +24,19 @@ function RemoteReceiveAndDisplay({ peerConnection }) {
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
       <h1 className="text-xl font-bold mb-4">Received Translations</h1>
-      <div className="mt-4">
-        {receivedTexts.map((text, index) => (
-          <p key={index} className="text-gray-700">{text}</p>
-        ))}
-      </div>
+      {/* Translations */}
+      <div className="mt-4 p-2 border border-gray-400 rounded-lg bg-gray-50">
+          {receivedTexts.map((t, index) => (
+            <p
+              key={index}
+              className={`mt-1 ${
+                t.isLatest ? "text-black font-bold" : "text-gray-500"
+              }`}
+            >
+              {t.text}
+            </p>
+          ))}
+        </div>
     </div>
   );
 }

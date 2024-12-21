@@ -7,12 +7,12 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 
 function LocalTranslationAndSend({ callDocId,isCaller, peerConnection }) {
   const [translations, setTranslations] = useState([]);
-  const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
   const [inputLang, setInputLang] = useState(null);
   const [outputLang, setOutputLang] = useState(null);
   const [inputLangCode, setInputLangCode] = useState(null);
   const [outputLangCode, setOutputLangCode] = useState(null);
-
+  
+  const callDocRef = useMemo(() => doc(db, "calls", callDocId), [callDocId]);
   // Language-to-code mapping
     const languageCodeMap = useMemo(
       () => ({
@@ -74,7 +74,7 @@ function LocalTranslationAndSend({ callDocId,isCaller, peerConnection }) {
     })
   
         const translatedText = responseAxios.data.translated_text;
-      setTranslations((prev) => [...prev, translatedText]);
+      // setTranslations((prev) => [...prev, translatedText]);
 
       // Send translated text to the remote peer via WebRTC DataChannel
       if (peerConnection && peerConnection.dataChannel) {
@@ -108,11 +108,11 @@ function LocalTranslationAndSend({ callDocId,isCaller, peerConnection }) {
       <h1 className="text-xl font-bold mb-4">Local Translation and Sending</h1>
       <p>Input: {inputLang}</p>
       <p>Output: {outputLang}</p>
-      <div className="mt-4">
+      {/* <div className="mt-4">
         {translations.map((t, index) => (
           <p key={index} className="text-gray-700">{t}</p>
         ))}
-      </div>
+      </div> */}
     </div>
   );
 }
