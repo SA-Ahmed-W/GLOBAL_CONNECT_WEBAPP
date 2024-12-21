@@ -369,6 +369,10 @@ const VideoCall = () => {
                     End Call
                 </button>
             </div>
+            
+            <div>
+                <RemoteStreamAudioEquilizer audioStream={audioStream} />
+            </div>
 
             {isTranslation && (
                 <div className="bg-gray-800 text-white p-4 rounded-lg">
@@ -377,9 +381,7 @@ const VideoCall = () => {
                 </div>
             )}
 
-            <div>
-                <RemoteStreamAudioEquilizer audioStream={audioStream} />
-            </div>
+           
         </div>
     );
 };

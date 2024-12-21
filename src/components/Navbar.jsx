@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate, NavLink } from "react-router-dom";
 import { auth, db } from "../config/firebase"; // Firebase auth and Firestore import
 import { signOut, onAuthStateChanged } from "firebase/auth";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, collection, query, where, onSnapshot } from "firebase/firestore";
 
 const Navbar = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [user, setUser] = useState(null); // Track user state manually
+  const [totalRequest, setTotalRequest] = useState(0);
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
@@ -17,6 +18,22 @@ const Navbar = () => {
     });
     return () => unsubscribe(); // Clean up on component unmount
   }, []);
+
+  // Real-time listener for friend requests
+  useEffect(() => {
+    if (user) {
+      // Get the collection for friend requests where the status is "pending"
+      const requestsRef = collection(db, "friendRequests");
+      const q = query(requestsRef, where("to", "==", user.uid), where("status", "==", "pending"));
+
+      // Listen for real-time updates
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        setTotalRequest(snapshot.size); // Update total request count in real-time
+      });
+
+      return () => unsubscribe(); // Cleanup listener on component unmount
+    }
+  }, [user]);
 
   // Close dropdown if clicking outside of it
   useEffect(() => {
@@ -44,7 +61,7 @@ const Navbar = () => {
     <nav className="bg-blue-600 p-4 flex justify-between items-center rounded-3x">
       <div className="text-white text-lg font-semibold">
         <div className="rounded-xl flex items-center">
-        <Link to="/" className="">GlobalConnect</Link>
+          <Link to="/" className="">GlobalConnect</Link>
         </div>
       </div>
 
@@ -52,7 +69,13 @@ const Navbar = () => {
         <div className="flex items-center space-x-4">
           <NavLink to="/" className="text-white hidden md:inline">Friends</NavLink>
           <NavLink to="/add-friend" className="text-white hidden md:inline">Add Friend</NavLink>
-          <NavLink to="/friends-request" className="text-white hidden md:inline">Friend Request</NavLink>
+          <NavLink to="/friends-request" className="relative text-white hidden md:inline">
+            Friend Request
+            <span className="absolute top-[-10px] right-0 bg-red-100 text-red-800 text-xs font-medium me-2 px-2.5 py-0.5 rounded-full dark:bg-red-900 dark:text-red-300">
+              {totalRequest}
+            </span>
+          </NavLink>
+
           <NavLink to="/remove-friend" className="text-white hidden md:inline">Remove Friend</NavLink>
 
           <div className="relative" ref={dropdownRef}>
@@ -97,15 +120,12 @@ const Navbar = () => {
                 >
                   Remove Friend
                 </NavLink>
-                {/* <div className="border-b"> */}
                 <button
                   onClick={handleLogout}
                   className="w-full text-left px-4 py-2 text-sm bg-red-600 rounded-b-lg text-white font-semibold hover:bg-red-700"
                 >
                   Logout
                 </button>
-                {/* </div> */}
-
               </div>
             )}
           </div>

@@ -1,4 +1,3 @@
-// src/pages/AddFriend.jsx
 import React, { useState, useEffect } from "react";
 import { db, auth } from "../config/firebase";
 import { collection, query, where, getDocs, setDoc, deleteDoc, doc } from "firebase/firestore";
@@ -48,44 +47,20 @@ const AddFriend = () => {
     }
   };
 
-  const handleAddFriend = async (friend) => {
+  const handleSendRequest = async (friend) => {
     try {
-      const friendRef = doc(db, "users", userId, "friends", friend.id);
-      const userRef = doc(db, "users", friend.id, "friends", userId);
+      const requestRef = doc(db, "friendRequests", userId + "_" + friend.id);
 
-      const userFriendfDoc = doc(db, "users",userId)
-      const userRefDoc = doc(db, "users",friend.id)
-
-      // await setDoc(friendRef, { name: friend.name, email: friend.email, profilePic: friend.profilePic || "" });
-      await setDoc(friendRef, {
-        name: friend.name,
-        email: friend.email,
-        profilePic: friend.profilePic || "",
-        status: userRefDoc || "null"  // Assuming a default value if status is unavailable
+      await setDoc(requestRef, {
+        from: userId,
+        to: friend.id,
+        status: "pending"
       });
-      await setDoc(userRef, { name: auth.currentUser.displayName, email: auth.currentUser.email, profilePic: auth.currentUser.photoURL || "",status : userFriendfDoc || "null" });
 
-      toast.success(`${friend.name} added as a friend!`);
-      setFriends((prev) => [...prev, friend.id]); // Update friends list locally
+      toast.success(`Friend request sent to ${friend.name}!`);
     } catch (error) {
-      console.error("Error adding friend:", error);
-      toast.error("Failed to add friend.");
-    }
-  };
-
-  const handleRemoveFriend = async (friend) => {
-    try {
-      const friendRef = doc(db, "users", userId, "friends", friend.id);
-      const userRef = doc(db, "users", friend.id, "friends", userId);
-
-      await deleteDoc(friendRef);
-      await deleteDoc(userRef);
-
-      toast.error(`${friend.name} removed from friends.`);
-      setFriends((prev) => prev.filter((id) => id !== friend.id)); // Update friends list locally
-    } catch (error) {
-      console.error("Error removing friend:", error);
-      toast.error("Failed to remove friend.");
+      console.error("Error sending friend request:", error);
+      toast.error("Failed to send friend request.");
     }
   };
 
@@ -125,18 +100,13 @@ const AddFriend = () => {
                 </div>
               </div>
               {friends.includes(user.id) ? (
-                <button
-                  onClick={() => handleRemoveFriend(user)}
-                  className="px-4 py-2 text-white bg-red-600 rounded hover:bg-red-700"
-                >
-                  Remove
-                </button>
+                <span className="text-green-600">Already Friends</span>
               ) : (
                 <button
-                  onClick={() => handleAddFriend(user)}
-                  className="px-4 py-2 text-white bg-green-600 rounded hover:bg-green-700"
+                  onClick={() => handleSendRequest(user)}
+                  className="px-4 py-2 text-white bg-blue-600 rounded hover:bg-blue-700"
                 >
-                  Add
+                  Send Request
                 </button>
               )}
             </div>
