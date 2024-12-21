@@ -33,6 +33,7 @@ const Register = () => {
         email,
         profilePic: profilePicUrl,
         status: "online",
+        password
       });
 
       navigate("/login"); // Redirect to login on success

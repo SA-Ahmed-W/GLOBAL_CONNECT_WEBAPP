@@ -64,39 +64,35 @@ function TranslationArea({ callDocId, isCaller, remoteAudioStream, remoteStream 
 
   // Speech Recognition Setup
   useEffect(() => {
-    if (!remoteStream) return;
-
+    if (!remoteAudioStream) return;
+  
     const recognition = new SpeechRecognition();
     recognition.lang = inputLangCode || "en"; // Default to English if not set
     recognition.continuous = true;
-
-    // Extract audio tracks from the remote stream
-    const audioTracks = remoteStream.getAudioTracks();
+  
+    const audioTracks = remoteAudioStream.getAudioTracks(); // Use remoteAudioStream here
     if (audioTracks.length > 0) {
       const audioContext = new AudioContext();
       const source = audioContext.createMediaStreamSource(new MediaStream(audioTracks));
       const destination = audioContext.createMediaStreamDestination();
-
-      // Connect audio stream to SpeechRecognition
+  
       source.connect(destination);
-
-      // Start SpeechRecognition
+  
       recognition.onresult = (event) => {
         const transcript = event.results[event.results.length - 1][0].transcript;
-
-        // Translate the latest transcript
         translate(transcript);
       };
-
+  
       recognition.onerror = (event) => console.error("Speech recognition error:", event.error);
       recognition.start();
-
+  
       return () => {
         recognition.stop();
         audioContext.close();
       };
     }
-  }, [remoteStream, inputLangCode]);
+  }, [remoteAudioStream, inputLangCode]);
+  
 
   const translate = useCallback(
     async (text) => {
