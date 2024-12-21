@@ -4,6 +4,8 @@ import { doc, getDoc, updateDoc, onSnapshot, deleteDoc } from 'firebase/firestor
 import { useLocation, useNavigate } from 'react-router-dom';
 import TranslationArea from '../components/TranslationArea';
 import RemoteStreamAudioEquilizer from '../components/RemoteStreamAudioEquilizer';
+import LocalTranslationAndSend from '../components/LocalTranslationAndSend';
+import RemoteReceiveAndDisplay from "../components/RemoteReceiveAndDisplay"
 
 const VideoCall = () => {
     const location = useLocation();
@@ -41,16 +43,23 @@ const VideoCall = () => {
 
     const initializePeerConnection = useCallback(() => {
         const pc = new RTCPeerConnection(servers);
-        
+
         // Setup tracks before creating offer/answer
         setupTransceivers(pc);
+
+        // Create a DataChannel
+        const dataChannel = pc.createDataChannel("translationChannel");
+        pc.dataChannel = dataChannel;
+
+        dataChannel.onopen = () => console.log("DataChannel is open");
+        dataChannel.onclose = () => console.log("DataChannel is closed");
 
         pc.ontrack = (event) => {
             console.log('ontrack event:', event);
             if (event.streams && event.streams[0]) {
                 console.log('Setting remote stream');
                 setRemoteStream(event.streams[0]);
-                
+
                 // Extract audio tracks
                 const audioTracks = event.streams[0].getAudioTracks();
                 if (audioTracks.length > 0) {
@@ -101,18 +110,18 @@ const VideoCall = () => {
 
     const setupLocalStream = useCallback(async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                audio: true, 
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: true,
                 video: {
                     width: { ideal: 1280 },
                     height: { ideal: 720 }
-                } 
+                }
             });
-            
+
             if (localVideoRef.current) {
                 localVideoRef.current.srcObject = stream;
             }
-            
+
             localStreamRef.current = stream;
 
             // Ensure peer connection exists before adding tracks
@@ -139,7 +148,7 @@ const VideoCall = () => {
                 offerToReceiveAudio: true,
                 offerToReceiveVideo: true
             });
-            
+
             await pc.setLocalDescription(offer);
             signalingStateRef.current = 'have-local-offer';
 
@@ -230,11 +239,11 @@ const VideoCall = () => {
         }
 
         try {
-            await updateDoc(callDocRef, { 
-                status: 'ended', 
-                endedAt: new Date().toISOString() 
+            await updateDoc(callDocRef, {
+                status: 'ended',
+                endedAt: new Date().toISOString()
             });
-            
+
             // Update user status
             if (auth.currentUser) {
                 const userDocRef = doc(db, "users", auth.currentUser.uid);
@@ -300,12 +309,12 @@ const VideoCall = () => {
                         if (docSnapshot.exists()) {
                             const callData = docSnapshot.data();
                             const receiverId = isCaller ? callData.receiverId : callData.callerId;
-                            
+
                             if (receiverId) {
                                 const userRef = doc(db, "users", receiverId);
                                 await updateDoc(userRef, { status: "online" });
                             }
-                            
+
                             await deleteDoc(callDocRef);
                         }
                     } catch (error) {
@@ -392,16 +401,28 @@ const VideoCall = () => {
                 </button>
             </div>
 
-            {isTranslation ? (
-                <TranslationArea 
-                    callDocId={callDocId} 
-                    isCaller={isCaller} 
-                    remoteStream={remoteStream} 
-                    remoteAudioStream={audioStream} 
-                />
-            ) : (
-                <p className="text-center mt-4">Translation not enabled</p>
-            )}
+            {isTranslation ?
+                (
+                    <>
+                    <LocalTranslationAndSend
+                        peerConnection={pc}
+                        callDocId={callDocId}
+                        isCaller={isCaller}
+                    />
+                    <RemoteReceiveAndDisplay peerConnection={pc} />
+                    </>
+                )
+                // (
+                //     <TranslationArea
+                //         callDocId={callDocId}
+                //         isCaller={isCaller}
+                //         remoteStream={remoteStream}
+                //         remoteAudioStream={audioStream}
+                //     />
+                // ) 
+                : (
+                    <p className="text-center mt-4">Translation not enabled</p>
+                )}
         </div>
     );
 };
