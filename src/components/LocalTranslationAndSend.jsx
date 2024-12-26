@@ -7,6 +7,7 @@ import { db } from "../config/firebase";
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
 
+  
 function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
   const [isDataChannelReady, setIsDataChannelReady] = useState(false);
   const [translations, setTranslations] = useState([]);
