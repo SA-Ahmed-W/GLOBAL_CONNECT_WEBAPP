@@ -84,27 +84,27 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
 
   const sendText = useCallback(
     async(text) => {
-      const apiUrl = "https://gc-translate.onrender.com/api/v1/translate";
-      const responseAxios = await axios.post(
-        apiUrl,
-        {
-          text: text,
-          input_language_code: inputLangCode,
-          output_language_code: outputLangCode,
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${import.meta.env.VITE_GC_API_TRANSLATE_SECRET_KEY}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      // const apiUrl = "https://gc-translate.onrender.com/api/v1/translate";
+      // const responseAxios = await axios.post(
+      //   apiUrl,
+      //   {
+      //     text: text,
+      //     input_language_code: inputLangCode,
+      //     output_language_code: outputLangCode,
+      //   },
+      //   {
+      //     headers: {
+      //       Authorization: `Bearer ${import.meta.env.VITE_GC_API_TRANSLATE_SECRET_KEY}`,
+      //       "Content-Type": "application/json",
+      //     },
+      //   }
+      // );
 
-      const translatedText = responseAxios.data.translated_text;
+      // const translatedText = responseAxios.data.translated_text;
 
       if (peerConnection && peerConnection.dataChannel && isDataChannelReady) {
-        console.log("Sending text:", translatedText);
-        peerConnection.dataChannel.send(translatedText);
+        console.log("Sending text:", text);
+        peerConnection.dataChannel.send(text);
       } else {
         console.error("DataChannel is not ready for sending.");
       }
@@ -127,7 +127,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
       console.error("Speech recognition error:", event.error);
     recognition.start();
 
-    
+
     return () => {
       recognition.stop();
     };
