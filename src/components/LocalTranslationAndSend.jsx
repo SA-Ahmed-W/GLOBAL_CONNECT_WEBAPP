@@ -1,4 +1,8 @@
-import React, { useEffect, useState, useCallback,useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
+import axios from "axios";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../config/firebase";
+
 
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
