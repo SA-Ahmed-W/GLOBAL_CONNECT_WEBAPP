@@ -437,13 +437,13 @@ const VideoCall = () => {
       {isTranslation && peerConnectionRef.current?.dataChannel && (
         <div className="bg-gray-800 text-white p-4 rounded-lg">
           <LocalTranslationAndSend
-            dataChannel={peerConnectionRef.current}
+            peerConnection={peerConnectionRef.current}
             callDocId={callDocId}
             isCaller={isCaller}
           />
           
           <RemoteReceiveAndDisplay
-            dataChannel={peerConnectionRef.current}
+            peerConnection={peerConnectionRef.current}
           />
         </div>
       )}
