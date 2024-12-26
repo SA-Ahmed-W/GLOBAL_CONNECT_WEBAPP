@@ -10,6 +10,7 @@ const FriendsList = () => {
   const [friends, setFriends] = useState([]);
   const [statuses, setStatuses] = useState({});
   const navigate = useNavigate();
+  
   const [incomingCall, setIncomingCall] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [XCallID,setCallID] = useState(null)

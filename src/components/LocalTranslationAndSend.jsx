@@ -100,7 +100,10 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
     recognition.onresult = (event) => {
       const transcript = event.results[event.results.length - 1][0].transcript;
       console.log("Speech Transcript:", transcript);
-      translateText(transcript);
+      // translateText(transcript);
+      if (peerConnection && peerConnection.dataChannel) {
+        peerConnection.dataChannel.send(transcript);
+      }
     };
 
     recognition.onerror = (event) => console.error("Speech recognition error:", event.error);
@@ -109,7 +112,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
     return () => {
       recognition.stop();
     };
-  }, [inputLangCode, translateText]);
+  }, [inputLangCode]);
 
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">

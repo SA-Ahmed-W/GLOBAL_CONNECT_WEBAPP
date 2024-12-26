@@ -10,7 +10,7 @@ function RemoteReceiveAndDisplay({ peerConnection }) {
 
     // Log when dataChannel is opened
     dataChannel.onopen = () => {
-      console.log("DataChannel opened.");
+      console.log("DataChannel opened. REC");
     };
 
     dataChannel.onmessage = (event) => {
@@ -24,8 +24,8 @@ function RemoteReceiveAndDisplay({ peerConnection }) {
       ]);
     };
 
-    dataChannel.onerror = (error) => console.error("DataChannel error:", error);
-    dataChannel.onclose = () => console.log("DataChannel closed.");
+    dataChannel.onerror = (error) => console.error("DataChannel error RR:", error);
+    dataChannel.onclose = () => console.log("DataChannel closed. RR");
 
   }, [peerConnection]);
 
