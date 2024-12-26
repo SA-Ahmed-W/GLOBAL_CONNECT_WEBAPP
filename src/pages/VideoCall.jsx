@@ -441,6 +441,7 @@ const VideoCall = () => {
             callDocId={callDocId}
             isCaller={isCaller}
           />
+          
           <RemoteReceiveAndDisplay
             dataChannel={peerConnectionRef.current}
           />
