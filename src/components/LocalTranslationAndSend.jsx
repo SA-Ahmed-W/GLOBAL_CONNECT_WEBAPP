@@ -105,6 +105,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
         }
       );
 
+      
       const translatedText = responseAxios.data.translated_text;
 
       if (peerConnection && peerConnection.dataChannel && isDataChannelReady) {
