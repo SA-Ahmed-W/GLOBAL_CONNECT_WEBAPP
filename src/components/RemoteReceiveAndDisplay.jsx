@@ -46,6 +46,7 @@ function RemoteReceiveAndDisplay({ peerConnection }) {
     };
   }, [peerConnection]);
 
+  
   return (
     <div className="p-4 border border-gray-300 rounded-lg shadow-md bg-white">
       <h1 className="text-xl font-bold mb-4">Received Translations</h1>

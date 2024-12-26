@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback,useMemo } from "react";
 
 const SpeechRecognition =
   window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -112,7 +112,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
     [peerConnection, isDataChannelReady]
   );
 
-  
+
   useEffect(() => {
     const recognition = new SpeechRecognition();
     recognition.lang = inputLangCode || "en";// Adjust language as needed
