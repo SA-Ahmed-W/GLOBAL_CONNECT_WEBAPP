@@ -127,6 +127,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
       console.error("Speech recognition error:", event.error);
     recognition.start();
 
+    
     return () => {
       recognition.stop();
     };
