@@ -112,6 +112,7 @@ function LocalTranslationAndSend({ callDocId, isCaller, peerConnection }) {
     [peerConnection, isDataChannelReady]
   );
 
+  
   useEffect(() => {
     const recognition = new SpeechRecognition();
     recognition.lang = inputLangCode || "en";// Adjust language as needed
