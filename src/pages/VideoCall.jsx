@@ -49,8 +49,8 @@ const VideoCall = () => {
         const dataChannel = pc.createDataChannel("translationChannel");
         pc.dataChannel = dataChannel;
 
-        dataChannel.onopen = () => console.log("DataChannel is open");
-        dataChannel.onclose = () => console.log("DataChannel is closed");
+        dataChannel.onopen = () => console.log("DataChannel is open VC");
+        dataChannel.onclose = () => console.log("DataChannel is closed VC");
 
         pc.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
