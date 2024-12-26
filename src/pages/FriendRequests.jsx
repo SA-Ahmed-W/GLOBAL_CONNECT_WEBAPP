@@ -97,7 +97,7 @@ const FriendRequests = () => {
           <p className="text-gray-500">No new friend requests.</p>
         ) : (
           requests.map((request) => {
-            const senderName = userNames[request.from] || "Loading..."; // Default to "Loading..." until name is fetched
+            const senderName = userNames[request.from] || "Request"; // Default to "Loading..." until name is fetched
 
             return (
               <div key={request.from} className="flex items-center justify-between p-4 bg-white rounded shadow-lg">
